@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>DocAI Agent Workbench</title>
+    <style>
+        :root {
+            --primary: #165dff;
+            --success: #00b42a;
+            --warning: #ff7d00;
+            --danger: #f53f3f;
+            --text: #1f2329;
+            --muted: #86909c;
+            --border: #e5e6eb;
+            --bg: #f7f8fa;
+            --card: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); }
+        header { padding: 20px 28px; background: linear-gradient(135deg, #0e42d2, #4080ff); color: #fff; }
+        header h1 { margin: 0; font-size: 22px; }
+        header p { margin: 6px 0 0; opacity: .85; }
+        main { padding: 20px 28px 40px; }
+        section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 4px 14px rgba(31, 35, 41, .04); }
+        h2 { font-size: 16px; margin: 0 0 12px; }
+        h3 { font-size: 14px; margin: 14px 0 8px; }
+        textarea, input, select { width: 100%; padding: 9px 10px; border: 1px solid #c9cdd4; border-radius: 8px; background: #fff; color: var(--text); }
+        textarea { resize: vertical; }
+        button { padding: 8px 12px; border: none; border-radius: 8px; background: var(--primary); color: #fff; cursor: pointer; font-weight: 600; }
+        button.secondary { background: #f2f3f5; color: var(--text); }
+        button.danger { background: var(--danger); }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        pre { background: #101828; color: #d1e9ff; padding: 12px; border-radius: 8px; overflow: auto; max-height: 360px; font-size: 12px; }
+        .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+        .col-4 { grid-column: span 4; }
+        .col-6 { grid-column: span 6; }
+        .col-8 { grid-column: span 8; }
+        .col-12 { grid-column: span 12; }
+        .row { display: flex; gap: 10px; align-items: center; }
+        .row > * { flex: 1; }
+        .row.compact > * { flex: initial; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+        .card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: #fff; }
+        .card-title { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; font-weight: 700; }
+        .muted { color: var(--muted); font-size: 12px; }
+        .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; font-size: 12px; background: #eef3ff; color: var(--primary); white-space: nowrap; }
+        .badge.success { background: #e8ffea; color: var(--success); }
+        .badge.warning { background: #fff7e8; color: var(--warning); }
+        .badge.danger { background: #ffece8; color: var(--danger); }
+        .badge.gray { background: #f2f3f5; color: #4e5969; }
+        .risk-high, .risk-critical { color: var(--danger); font-weight: 700; }
+        .risk-medium { color: var(--warning); font-weight: 700; }
+        .risk-low { color: var(--success); font-weight: 700; }
+        .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+        .progress { height: 8px; background: #edf0f5; border-radius: 999px; overflow: hidden; margin: 8px 0; }
+        .progress div { height: 100%; background: var(--primary); }
+        .timeline { border-left: 2px solid #dbe7ff; padding-left: 12px; }
+        .timeline-item { position: relative; padding: 8px 0 8px 10px; border-bottom: 1px dashed var(--border); }
+        .timeline-item::before { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; position: absolute; left: -17px; top: 14px; }
+        .source { border-left: 3px solid var(--primary); padding: 8px 10px; background: #f5f8ff; border-radius: 6px; margin-bottom: 8px; }
+        .empty { color: var(--muted); padding: 14px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; }
+        .filterbar { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; margin: 8px 0 10px; }
+        .inline-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .inline-actions button { padding: 5px 8px; font-size: 12px; }
+        .kpis { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+        .kpi { background: #f5f8ff; border: 1px solid #dbe7ff; border-radius: 8px; padding: 8px 10px; min-width: 92px; }
+        .kpi strong { display: block; font-size: 18px; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        label.muted { display: inline-flex; align-items: center; gap: 6px; }
+        .event-stream { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+        .event-item { padding: 8px 10px; border-bottom: 1px dashed var(--border); font-size: 12px; }
+        @media (max-width: 960px) { .col-4, .col-6, .col-8 { grid-column: span 12; } }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+<header>
+    <h1>DocAI Agent Workbench</h1>
+    <p>统一查看工具能力、Agent 计划执行、审批闭环、任务历史、知识索引进度与来源。</p>
+</header>
+<main>
+    <section>
+        <div class="row">
+            <div>
+                <h2>工作台总览</h2>
+                <div id="overview" class="muted">点击刷新加载当前用户、任务和索引概览。</div>
+                <div id="overviewKpis" class="kpis"></div>
+            </div>
+            <div>
+                <button onclick="loadOverview()">刷新总览</button>
+                <button class="secondary" onclick="connectProgressSocket()">连接实时进度</button>
+                <label class="muted" style="margin-top:8px;">
+                    <input id="autoRefresh" type="checkbox" onchange="toggleAutoRefresh()" />
+                    自动刷新（5s）
+                </label>
+                <div id="refreshStatus" class="muted">未开启自动刷新</div>
+                <div id="wsStatus" class="muted">WebSocket 未连接</div>
+            </div>
+        </div>
+        <h3>实时事件流</h3>
+        <div id="eventStream" class="event-stream"><div class="empty">连接后显示 Agent / 索引进度事件</div></div>
+    </section>
+
+    <div class="grid">
+        <section class="col-4">
+            <h2>1. 工具能力 Schema</h2>
+            <div class="toolbar">
+                <button onclick="loadTools()">加载工具列表</button>
+                <button class="secondary" onclick="toggleRaw('toolsRaw')">Raw</button>
+            </div>
+            <div id="tools" class="cards"></div>
+            <pre id="toolsRaw" style="display:none;">{}</pre>
+        </section>
+
+        <section class="col-8">
+            <h2>2. 执行 Agent 任务</h2>
+            <textarea id="task" rows="3" placeholder="例如：根据知识库总结 DocAI Agent 的实现，并列出来源"></textarea>
+            <div class="row" style="margin-top: 8px;">
+                <input id="knowledgeBaseId" placeholder="knowledgeBaseId（默认 default）" value="default" />
+                <select id="returnIntermediateSteps">
+                    <option value="true">返回中间步骤</option>
+                    <option value="false">隐藏中间步骤</option>
+                </select>
+            </div>
+            <div class="toolbar">
+                <button onclick="runAgent(false)">执行</button>
+                <button class="secondary" onclick="runAgent(true)">仅生成计划</button>
+                <button class="secondary" onclick="loadTasks()">刷新任务历史</button>
+            </div>
+            <div id="runSummary" class="muted">尚未执行任务。</div>
+            <h3>Plan</h3>
+            <div id="planCards" class="cards"></div>
+            <h3>Timeline</h3>
+            <div id="timeline" class="timeline"></div>
+            <h3>工具结果与来源</h3>
+            <div id="sources"></div>
+            <pre id="planOutput">{}</pre>
+        </section>
+    </div>
+
+    <div class="grid">
+        <section class="col-4">
+            <h2>3. 危险操作审批</h2>
+            <input id="approvalToken" placeholder="agentApprovalToken" />
+            <textarea id="approvalContext" rows="4" placeholder='可选 context JSON，例如 {"objectName":"a.txt"}'></textarea>
+            <div class="toolbar">
+                <button onclick="confirmApproval()">确认继续</button>
+                <button class="secondary" onclick="cancelApproval()">取消审批</button>
+            </div>
+            <pre id="approvalOutput">{}</pre>
+        </section>
+
+        <section class="col-8">
+            <h2>4. 任务历史 / 取消 / 单步重试</h2>
+            <div class="row">
+                <input id="traceId" placeholder="traceId" />
+                <input id="stepId" placeholder="stepId（用于单步重试）" />
+            </div>
+            <div class="filterbar">
+                <input id="taskFilter" placeholder="按任务/traceId/原因筛选" oninput="renderTasks()" />
+                <select id="taskStatusFilter" onchange="renderTasks()">
+                    <option value="">全部状态</option>
+                    <option value="success">success</option>
+                    <option value="action_required">action_required</option>
+                    <option value="error">error</option>
+                    <option value="cancelled">cancelled</option>
+                </select>
+                <button class="secondary" onclick="clearTaskFilters()">清空筛选</button>
+            </div>
+            <textarea id="overrideParams" rows="3" placeholder='overrideParams JSON，例如 {"query":"新的查询词"}'></textarea>
+            <div class="toolbar">
+                <button onclick="loadTasks()">加载历史</button>
+                <button class="secondary" onclick="loadTaskById()">查询任务</button>
+                <button class="danger" onclick="cancelTask()">取消任务</button>
+                <button onclick="retryStep()">单步重试</button>
+            </div>
+            <div id="tasks" class="cards"></div>
+            <pre id="taskOutput">{}</pre>
+        </section>
+    </div>
+
+    <section>
+        <h2>5. 知识索引任务 / 进度 / 去重</h2>
+        <div class="grid">
+            <div class="col-4">
+                <input id="documentId" placeholder="documentId" />
+            </div>
+            <div class="col-4">
+                <input id="indexKnowledgeBaseId" placeholder="knowledgeBaseId" value="default" />
+            </div>
+            <div class="col-4">
+                <input id="jobId" placeholder="jobId" />
+            </div>
+            <div class="col-12">
+                <textarea id="documentContent" rows="4" placeholder="文档内容；重复提交相同内容会通过 contentHash 复用索引"></textarea>
+            </div>
+        </div>
+        <div class="toolbar">
+            <button onclick="indexAsync()">异步索引</button>
+            <button class="secondary" onclick="loadJob()">查询任务状态</button>
+            <button class="secondary" onclick="loadJobs()">加载任务列表</button>
+            <button onclick="retryKnowledgeJob()">重试失败任务</button>
+            <button class="danger" onclick="deleteKnowledgeJob()">删除任务记录</button>
+        </div>
+        <div class="filterbar">
+            <input id="jobFilter" placeholder="按 documentId/jobId/hash 筛选" oninput="renderJobs()" />
+            <select id="jobStatusFilter" onchange="renderJobs()">
+                <option value="">全部索引状态</option>
+                <option value="PENDING">PENDING</option>
+                <option value="PARSING">PARSING</option>
+                <option value="EMBEDDING">EMBEDDING</option>
+                <option value="INDEXED">INDEXED</option>
+                <option value="FAILED">FAILED</option>
+            </select>
+            <button class="secondary" onclick="clearJobFilters()">清空筛选</button>
+        </div>
+        <div id="jobs" class="cards"></div>
+        <pre id="indexOutput">{}</pre>
+    </section>
+</main>
+
+<script>
+const baseUrl = '/api/ai/agent';
+let lastRun = null;
+let lastTools = [];
+let lastTasks = [];
+let lastJobs = [];
+let autoRefreshTimer = null;
+let stompClient = null;
+let progressEvents = [];
+
+async function api(path, options = {}) {
+    const headers = options.headers || { 'Content-Type': 'application/json' };
+    const res = await fetch(baseUrl + path, { ...options, headers });
+    const text = await res.text();
+    let payload;
+    try { payload = JSON.parse(text); } catch (e) { payload = { raw: text }; }
+    if (!res.ok) {
+        return { code: res.status, message: res.statusText, data: payload };
+    }
+    return payload;
+}
+
+function dataOf(resp) {
+    return resp && Object.prototype.hasOwnProperty.call(resp, 'data') ? resp.data : resp;
+}
+
+function safeJsonParse(text, fallback = {}) {
+    if (!text || !text.trim()) return fallback;
+    try { return JSON.parse(text); } catch (e) { alert('JSON 格式错误: ' + e.message); return fallback; }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[s]));
+}
+
+function statusBadge(status) {
+    const s = String(status || 'unknown').toLowerCase();
+    const cls = s.includes('success') || s.includes('indexed') ? 'success' : s.includes('fail') || s.includes('error') ? 'danger' : s.includes('wait') || s.includes('pending') || s.includes('action') ? 'warning' : 'gray';
+    return `<span class="badge ${cls}">${escapeHtml(status || 'unknown')}</span>`;
+}
+
+function toggleRaw(id) {
+    const el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function formatTime(ms) {
+    if (!ms) return '-';
+    return new Date(Number(ms)).toLocaleString();
+}
+
+function stopCardClick(event) {
+    if (event) event.stopPropagation();
+}
+
+function taskMatchesFilter(task) {
+    const text = (document.getElementById('taskFilter')?.value || '').toLowerCase();
+    const status = document.getElementById('taskStatusFilter')?.value || '';
+    const blob = JSON.stringify({
+        traceId: task.traceId,
+        task: task.task,
+        status: task.status,
+        stoppedReason: task.stoppedReason
+    }).toLowerCase();
+    return (!text || blob.includes(text)) && (!status || task.status === status);
+}
+
+function jobMatchesFilter(job) {
+    const text = (document.getElementById('jobFilter')?.value || '').toLowerCase();
+    const status = document.getElementById('jobStatusFilter')?.value || '';
+    const blob = JSON.stringify({
+        jobId: job.jobId,
+        documentId: job.documentId,
+        status: job.status,
+        contentHash: job.contentHash,
+        errorMessage: job.errorMessage
+    }).toLowerCase();
+    return (!text || blob.includes(text)) && (!status || job.status === status);
+}
+
+function clearTaskFilters() {
+    document.getElementById('taskFilter').value = '';
+    document.getElementById('taskStatusFilter').value = '';
+    renderTasks();
+}
+
+function clearJobFilters() {
+    document.getElementById('jobFilter').value = '';
+    document.getElementById('jobStatusFilter').value = '';
+    renderJobs();
+}
+
+function toggleAutoRefresh() {
+    const enabled = document.getElementById('autoRefresh').checked;
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+    document.getElementById('refreshStatus').textContent = enabled ? '自动刷新已开启' : '未开启自动刷新';
+    if (enabled) {
+        autoRefreshTimer = setInterval(() => {
+            loadTasks();
+            loadJobs();
+        }, 5000);
+    }
+}
+
+function connectProgressSocket() {
+    if (!window.SockJS || !window.Stomp) {
+        document.getElementById('wsStatus').textContent = 'WebSocket 客户端库未加载，继续使用轮询';
+        return;
+    }
+    if (stompClient && stompClient.connected) {
+        document.getElementById('wsStatus').textContent = 'WebSocket 已连接';
+        return;
+    }
+    document.getElementById('wsStatus').textContent = 'WebSocket 连接中...';
+    const socket = new SockJS('/ws/agent');
+    stompClient = Stomp.over(socket);
+    stompClient.debug = null;
+    stompClient.connect({}, () => {
+        document.getElementById('wsStatus').textContent = 'WebSocket 已连接：/topic/agent/progress';
+        stompClient.subscribe('/topic/agent/progress', message => {
+            try {
+                handleProgressEvent(JSON.parse(message.body));
+            } catch (e) {
+                appendProgressEvent({ eventType: 'parse_error', message: e.message, timestamp: Date.now() });
+            }
+        });
+    }, error => {
+        document.getElementById('wsStatus').textContent = 'WebSocket 连接失败，已降级为轮询';
+        appendProgressEvent({ eventType: 'ws_error', message: String(error), timestamp: Date.now() });
+    });
+}
+
+function handleProgressEvent(event) {
+    appendProgressEvent(event);
+    if (event.traceId) {
+        loadTasks();
+    }
+    if (event.jobId) {
+        loadJobs();
+    }
+}
+
+function appendProgressEvent(event) {
+    progressEvents.unshift(event);
+    progressEvents = progressEvents.slice(0, 80);
+    const el = document.getElementById('eventStream');
+    el.innerHTML = progressEvents.map(item => `
+        <div class="event-item">
+            <div>${statusBadge(item.status || item.eventType)} <strong>${escapeHtml(item.eventType || '-')}</strong></div>
+            <div class="muted">${formatTime(item.timestamp)} · trace=${escapeHtml(item.traceId || '-')} · job=${escapeHtml(item.jobId || '-')} · progress=${escapeHtml(item.progress || 0)}%</div>
+            <div>${escapeHtml(item.message || '')}</div>
+        </div>
+    `).join('');
+}
+
+async function loadOverview() {
+    const resp = await api('/workbench/overview');
+    const data = dataOf(resp) || {};
+    const tools = data.tools || [];
+    const tasks = data.tasks || [];
+    const jobs = data.knowledgeJobs || [];
+    lastTasks = tasks;
+    lastJobs = jobs;
+    const indexed = jobs.filter(j => j.status === 'INDEXED').length;
+    const failedJobs = jobs.filter(j => j.status === 'FAILED').length;
+    const actionRequired = tasks.filter(t => t.status === 'action_required').length;
+    document.getElementById('overview').innerHTML = `
+        当前用户：<strong>${escapeHtml(data.user && data.user.userId)}</strong>
+        <span class="badge gray">${escapeHtml(data.user && data.user.role)}</span>
+        工具 ${tools.length} 个，最近任务 ${tasks.length} 个，索引任务 ${jobs.length} 个。
+    `;
+    document.getElementById('overviewKpis').innerHTML = `
+        <div class="kpi"><strong>${tools.length}</strong><span class="muted">工具</span></div>
+        <div class="kpi"><strong>${tasks.length}</strong><span class="muted">Agent 任务</span></div>
+        <div class="kpi"><strong>${actionRequired}</strong><span class="muted">待审批/补充</span></div>
+        <div class="kpi"><strong>${indexed}</strong><span class="muted">已索引</span></div>
+        <div class="kpi"><strong>${failedJobs}</strong><span class="muted">索引失败</span></div>
+    `;
+    if (tools.length) renderTools(tools);
+    renderTasks(tasks);
+    renderJobs(jobs);
+}
+
+async function loadTools() {
+    const resp = await api('/tools');
+    const list = dataOf(resp) || [];
+    lastTools = list;
+    renderTools(list);
+    document.getElementById('toolsRaw').textContent = JSON.stringify(resp, null, 2);
+}
+
+function renderTools(list) {
+    const el = document.getElementById('tools');
+    if (!list.length) {
+        el.innerHTML = '<div class="empty">暂无工具</div>';
+        return;
+    }
+    el.innerHTML = list.map(t => `
+        <div class="card">
+            <div class="card-title">
+                <span>${escapeHtml(t.name)}</span>
+                <span class="risk-${escapeHtml(t.riskLevel || 'low')}">${escapeHtml(t.riskLevel || 'low')}</span>
+            </div>
+            <div class="muted">${escapeHtml(t.category || '-')} · ${escapeHtml(t.description || '')}</div>
+            <div style="margin-top:8px;">
+                ${t.destructive ? '<span class="badge danger">destructive</span>' : ''}
+                ${t.requiresUserAction ? '<span class="badge warning">needs user</span>' : ''}
+            </div>
+            <details style="margin-top:8px;"><summary class="muted">参数 schema</summary><pre>${escapeHtml(JSON.stringify(t.parameterSchema || {}, null, 2))}</pre></details>
+        </div>
+    `).join('');
+}
+
+async function runAgent(dryRun = false) {
+    const task = document.getElementById('task').value.trim();
+    if (!task) return alert('请输入任务');
+    const knowledgeBaseId = document.getElementById('knowledgeBaseId').value || 'default';
+    const returnIntermediateSteps = document.getElementById('returnIntermediateSteps').value === 'true';
+    const resp = await api('/execute', {
+        method: 'POST',
+        body: JSON.stringify({ task, dryRun, autoReplan: !dryRun, returnIntermediateSteps, knowledgeBaseId })
+    });
+    lastRun = dataOf(resp) || {};
+    document.getElementById('planOutput').textContent = JSON.stringify(resp, null, 2);
+    document.getElementById('traceId').value = lastRun.traceId || '';
+    renderRun(lastRun);
+    await loadTasks();
+}
+
+function renderRun(run) {
+    document.getElementById('runSummary').innerHTML = `
+        ${statusBadge(run.status)} traceId: <strong>${escapeHtml(run.traceId || '-')}</strong>
+        · stoppedReason: ${escapeHtml(run.stoppedReason || '-')}
+        · ${escapeHtml(run.durationMs || 0)}ms
+    `;
+    renderPlan(run.plan || []);
+    renderTimeline(run.timeline || []);
+    renderSources(run);
+    fillApprovalToken(run);
+}
+
+function fillApprovalToken(run) {
+    const approval = (run.toolResults || []).find(result => result.data && result.data.agentApprovalToken);
+    if (!approval) return;
+    document.getElementById('approvalToken').value = approval.data.agentApprovalToken;
+    document.getElementById('approvalOutput').textContent = JSON.stringify({
+        message: '已从工具结果自动识别审批 token',
+        toolName: approval.toolName,
+        approvalReason: approval.data.approvalReason,
+        expiresAt: approval.data.expiresAt,
+        params: approval.data.params
+    }, null, 2);
+}
+
+function renderPlan(plan) {
+    const el = document.getElementById('planCards');
+    if (!plan.length) {
+        el.innerHTML = '<div class="empty">暂无计划</div>';
+        return;
+    }
+    el.innerHTML = plan.map(step => `
+        <div class="card" onclick="document.getElementById('stepId').value='${escapeHtml(step.id)}'">
+            <div class="card-title"><span>${escapeHtml(step.id)}</span>${statusBadge(step.status)}</div>
+            <div><strong>${escapeHtml(step.toolName)}</strong></div>
+            <div class="muted">${escapeHtml(step.description || '')}</div>
+            <div class="muted">thought: ${escapeHtml(step.thought || '-')}</div>
+            <div style="margin-top:8px;">${step.requiresApproval ? '<span class="badge warning">approval</span>' : ''}<span class="badge gray">retry ${escapeHtml(step.attempts || 0)}/${escapeHtml(step.maxRetries || 0)}</span></div>
+            <details><summary class="muted">参数</summary><pre>${escapeHtml(JSON.stringify(step.params || {}, null, 2))}</pre></details>
+        </div>
+    `).join('');
+}
+
+function renderTimeline(timeline) {
+    const el = document.getElementById('timeline');
+    if (!timeline.length) {
+        el.innerHTML = '<div class="empty">暂无时间线</div>';
+        return;
+    }
+    el.innerHTML = timeline.map(item => `
+        <div class="timeline-item">
+            <div>${statusBadge(item.status)} <strong>${escapeHtml(item.stepId)}</strong> · ${escapeHtml(item.toolName)}</div>
+            <div class="muted">${escapeHtml(item.description || '')}</div>
+            <div>${escapeHtml(item.resultSummary || item.observation || '')}</div>
+        </div>
+    `).join('');
+}
+
+function collectSources(run) {
+    const sources = [];
+    (run.toolResults || []).forEach(result => {
+        const data = result.data || {};
+        ['sources', 'retrieved', 'results'].forEach(key => {
+            const value = data[key];
+            if (Array.isArray(value)) value.forEach(v => sources.push({ tool: result.toolName, value: v }));
+        });
+    });
+    return sources;
+}
+
+function renderSources(run) {
+    const el = document.getElementById('sources');
+    const sources = collectSources(run);
+    if (!sources.length) {
+        el.innerHTML = '<div class="empty">暂无来源；RAG 工具返回 sources/retrieved/results 时会显示在这里。</div>';
+        return;
+    }
+    el.innerHTML = sources.map((s, i) => `
+        <div class="source">
+            <div class="muted">#${i + 1} · ${escapeHtml(s.tool)}</div>
+            ${renderSourceValue(s.value)}
+        </div>
+    `).join('');
+}
+
+function renderSourceValue(value) {
+    if (!value || typeof value !== 'object') {
+        return `<div>${escapeHtml(value)}</div>`;
+    }
+    const title = value.title || value.documentId || value.fileName || value.source || value.id || '来源片段';
+    const content = value.content || value.text || value.snippet || value.summary || '';
+    const score = value.score || value.similarity || value.relevanceScore;
+    return `
+        <div><strong>${escapeHtml(title)}</strong>${score ? ` <span class="badge gray">score ${escapeHtml(score)}</span>` : ''}</div>
+        <div class="muted">${escapeHtml(String(content).slice(0, 280))}</div>
+        <details><summary class="muted">完整来源数据</summary><pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre></details>
+    `;
+}
+
+async function confirmApproval() {
+    const token = document.getElementById('approvalToken').value.trim();
+    const task = document.getElementById('task').value.trim();
+    if (!token || !task) return alert('请输入 token 和原任务');
+    const extraContext = safeJsonParse(document.getElementById('approvalContext').value, {});
+    const resp = await api('/approvals/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ task, context: { ...extraContext, agentApprovalToken: token } })
+    });
+    document.getElementById('approvalOutput').textContent = JSON.stringify(resp, null, 2);
+    const data = dataOf(resp);
+    if (data) renderRun(data);
+}
+
+async function cancelApproval() {
+    const token = document.getElementById('approvalToken').value.trim();
+    if (!token) return alert('请输入 token');
+    const resp = await api('/approvals/' + encodeURIComponent(token) + '/cancel', { method: 'POST' });
+    document.getElementById('approvalOutput').textContent = JSON.stringify(resp, null, 2);
+}
+
+async function loadTasks() {
+    const resp = await api('/tasks');
+    const list = dataOf(resp) || [];
+    lastTasks = list;
+    renderTasks(list);
+    document.getElementById('taskOutput').textContent = JSON.stringify(resp, null, 2);
+}
+
+async function loadTaskById() {
+    const traceId = document.getElementById('traceId').value.trim();
+    if (!traceId) return alert('请输入 traceId');
+    const resp = await api('/tasks/' + encodeURIComponent(traceId));
+    document.getElementById('taskOutput').textContent = JSON.stringify(resp, null, 2);
+    const data = dataOf(resp) || {};
+    if (data.plan) renderRun(data);
+}
+
+async function cancelTask(traceIdArg) {
+    const traceId = traceIdArg || document.getElementById('traceId').value.trim();
+    if (!traceId) return alert('请输入 traceId');
+    const resp = await api('/tasks/' + encodeURIComponent(traceId) + '/cancel', { method: 'POST' });
+    document.getElementById('taskOutput').textContent = JSON.stringify(resp, null, 2);
+    await loadTasks();
+}
+
+async function retryStep(traceIdArg, stepIdArg) {
+    const traceId = traceIdArg || document.getElementById('traceId').value.trim();
+    const stepId = stepIdArg || document.getElementById('stepId').value.trim();
+    if (!traceId || !stepId) return alert('请输入 traceId 和 stepId');
+    const overrideParams = safeJsonParse(document.getElementById('overrideParams').value, {});
+    const resp = await api('/tasks/' + encodeURIComponent(traceId) + '/steps/' + encodeURIComponent(stepId) + '/retry', {
+        method: 'POST',
+        body: JSON.stringify(overrideParams)
+    });
+    document.getElementById('taskOutput').textContent = JSON.stringify(resp, null, 2);
+    await loadTaskById();
+}
+
+function renderTasks(list = lastTasks) {
+    lastTasks = list || [];
+    const el = document.getElementById('tasks');
+    const filtered = lastTasks.filter(taskMatchesFilter);
+    if (!filtered.length) {
+        el.innerHTML = '<div class="empty">暂无任务历史</div>';
+        return;
+    }
+    el.innerHTML = filtered.map(t => {
+        const retryableSteps = (t.plan || []).filter(step => step.status === 'error' || step.status === 'blocked');
+        return `
+        <div class="card" onclick="selectTask('${escapeHtml(t.traceId || '')}')">
+            <div class="card-title"><span>${escapeHtml((t.task || '').slice(0, 28) || t.traceId)}</span>${statusBadge(t.status)}</div>
+            <div class="muted mono">traceId: ${escapeHtml(t.traceId)}</div>
+            <div class="muted">${formatTime(t.savedAt)} · ${escapeHtml(t.durationMs || 0)}ms</div>
+            <div class="muted">stoppedReason: ${escapeHtml(t.stoppedReason || '-')}</div>
+            <div style="margin-top:8px;"><span class="badge gray">steps ${(t.plan || []).length}</span><span class="badge gray">tools ${escapeHtml(t.toolCallCount || 0)}</span></div>
+            <div class="inline-actions">
+                <button class="secondary" onclick="stopCardClick(event); selectTask('${escapeHtml(t.traceId || '')}')">查看</button>
+                <button class="danger" onclick="stopCardClick(event); cancelTask('${escapeHtml(t.traceId || '')}')">取消</button>
+                ${retryableSteps.length ? `<button onclick="stopCardClick(event); retryStep('${escapeHtml(t.traceId || '')}', '${escapeHtml(retryableSteps[0].id || '')}')">重试失败步骤</button>` : ''}
+            </div>
+        </div>
+    `;
+    }).join('');
+}
+
+function selectTask(traceId) {
+    document.getElementById('traceId').value = traceId;
+    loadTaskById();
+}
+
+async function indexAsync() {
+    const documentId = document.getElementById('documentId').value.trim();
+    const content = document.getElementById('documentContent').value;
+    const knowledgeBaseId = document.getElementById('indexKnowledgeBaseId').value || 'default';
+    if (!documentId || !content.trim()) return alert('请输入 documentId 和文档内容');
+    const resp = await api('/knowledge/index/async?documentId=' + encodeURIComponent(documentId) + '&knowledgeBaseId=' + encodeURIComponent(knowledgeBaseId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: content
+    });
+    document.getElementById('indexOutput').textContent = JSON.stringify(resp, null, 2);
+    const data = dataOf(resp);
+    if (data && data.jobId) document.getElementById('jobId').value = data.jobId;
+    await loadJobs();
+}
+
+async function loadJob() {
+    const jobId = document.getElementById('jobId').value.trim();
+    if (!jobId) return alert('请输入 jobId');
+    const resp = await api('/knowledge/jobs/' + encodeURIComponent(jobId));
+    document.getElementById('indexOutput').textContent = JSON.stringify(resp, null, 2);
+}
+
+async function loadJobs() {
+    const kb = document.getElementById('indexKnowledgeBaseId').value.trim();
+    const query = kb ? '?knowledgeBaseId=' + encodeURIComponent(kb) : '';
+    const resp = await api('/knowledge/jobs' + query);
+    const list = dataOf(resp) || [];
+    lastJobs = list;
+    renderJobs(list);
+    document.getElementById('indexOutput').textContent = JSON.stringify(resp, null, 2);
+}
+
+async function retryKnowledgeJob(jobIdArg) {
+    const jobId = jobIdArg || document.getElementById('jobId').value.trim();
+    const content = document.getElementById('documentContent').value;
+    if (!jobId || !content.trim()) return alert('请输入 jobId 和文档内容');
+    const resp = await api('/knowledge/jobs/' + encodeURIComponent(jobId) + '/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: content
+    });
+    document.getElementById('indexOutput').textContent = JSON.stringify(resp, null, 2);
+    await loadJobs();
+}
+
+async function deleteKnowledgeJob(jobIdArg) {
+    const jobId = jobIdArg || document.getElementById('jobId').value.trim();
+    if (!jobId) return alert('请输入 jobId');
+    const resp = await api('/knowledge/jobs/' + encodeURIComponent(jobId), { method: 'DELETE' });
+    document.getElementById('indexOutput').textContent = JSON.stringify(resp, null, 2);
+    await loadJobs();
+}
+
+function renderJobs(list = lastJobs) {
+    lastJobs = list || [];
+    const el = document.getElementById('jobs');
+    const filtered = lastJobs.filter(jobMatchesFilter);
+    if (!filtered.length) {
+        el.innerHTML = '<div class="empty">暂无索引任务</div>';
+        return;
+    }
+    el.innerHTML = filtered.map(job => {
+        const progress = Number(job.progress || 0);
+        return `
+            <div class="card" onclick="selectJob('${escapeHtml(job.jobId || '')}')">
+                <div class="card-title"><span>${escapeHtml(job.documentId)}</span>${statusBadge(job.status)}</div>
+                <div class="progress"><div style="width:${Math.max(0, Math.min(100, progress))}%"></div></div>
+                <div class="muted">${progress}% · kb=${escapeHtml(job.knowledgeBaseId)} · attempts=${escapeHtml(job.attempts || 0)}</div>
+                <div class="muted">hash: ${escapeHtml((job.contentHash || '').slice(0, 16))}${job.contentHash ? '...' : ''}</div>
+                <div style="margin-top:8px;">
+                    ${job.reused ? '<span class="badge success">reused</span>' : '<span class="badge gray">rebuilt</span>'}
+                    <span class="badge gray">score ${escapeHtml(job.quality && job.quality.score || '-')}</span>
+                </div>
+                <div class="muted">${escapeHtml(job.errorMessage || '')}</div>
+                <div class="inline-actions">
+                    <button class="secondary" onclick="stopCardClick(event); selectJob('${escapeHtml(job.jobId || '')}')">查看</button>
+                    ${job.status === 'FAILED' ? `<button onclick="stopCardClick(event); retryKnowledgeJob('${escapeHtml(job.jobId || '')}')">重试</button>` : ''}
+                    <button class="danger" onclick="stopCardClick(event); deleteKnowledgeJob('${escapeHtml(job.jobId || '')}')">删除记录</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function selectJob(jobId) {
+    document.getElementById('jobId').value = jobId;
+    loadJob();
+}
+
+loadOverview();
+</script>
+</body>
+</html>

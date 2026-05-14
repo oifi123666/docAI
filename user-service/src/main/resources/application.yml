@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: user
+  
+  # 数据库配置
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:infra_mysql}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:doc_ai}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  # 禁用 Spring Cloud 兼容性检查
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    # Nacos 服务注册发现配置
+    nacos:
+      discovery:
+        server-addr: nacos:8848
+        namespace: public
+        timeout: 30000
+      client:
+        namespace: public
+        timeout: 30000
+
+  # Redis配置
+  data:
+    redis:
+      host: ${REDIS_HOST:infra_redis}
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      database: 0
+      timeout: 10000
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1
+          max-idle: 8
+          min-idle: 0
+
+# MyBatis-Plus配置
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.javaee.user.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 服务器配置
+server:
+  port: 8081
+  address: ${SERVER_ADDRESS}
+  servlet:
+    context-path: /
+
+# 日志配置
+logging:
+  level:
+    com.javaee.user: debug
+    org.springframework.security: info

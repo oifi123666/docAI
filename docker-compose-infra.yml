@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # MySQL 服务
+  mysql:
+    image: mysql:8.0
+    deploy:
+      placement:
+        constraints: [node.hostname == manager]
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: doc_ai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-schema.sql:ro
+    networks:
+      - docai-network
+    ports:
+      - "3306:3306"
+
+  # Redis 集群
+  redis:
+    image: redis:7.0
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        max_replicas_per_node: 1
+      restart_policy:
+        condition: on-failure
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - docai-network
+    ports:
+      - "6379:6379"
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    deploy:
+      placement:
+        constraints: [node.hostname == node1]
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    networks:
+      - docai-network
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  # MinIO
+  minio:
+    image: minio/minio
+    deploy:
+      placement:
+        constraints: [node.hostname == node1]
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - docai-network
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  # Nacos
+  nacos:
+    image: ${NACOS_USERNAME}/${NACOS_PASSWORD}-server:v2.2.0
+    deploy:
+      placement:
+        constraints: [node.hostname == node3]
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: mysql
+      MYSQL_SERVICE_PORT: 3306
+      MYSQL_SERVICE_DB_NAME: nacos_config
+      MYSQL_SERVICE_USER: nacos
+      MYSQL_SERVICE_PASSWORD: ${NACOS_MYSQL_PASSWORD}
+      MYSQL_SERVICE_DB_PARAM: characterEncoding=utf8&connectTimeout=30000&socketTimeout=30000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
+    volumes:
+      - nacos-data:/home/nacos/data
+    networks:
+      - docai-network
+
+networks:
+  docai-network:
+    external: true
+
+volumes:
+  mysql-data:
+  redis-data:
+  minio-data:
+  nacos-data:

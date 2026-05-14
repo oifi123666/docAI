@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.javaee.documentservice.mapper.DocumentAnnotationMapper">
+
+    <select id="selectByDocumentId" resultType="com.javaee.documentservice.entity.DocumentAnnotation">
+        SELECT * FROM document_annotation 
+        WHERE document_id = #{documentId} AND status = 'active'
+        ORDER BY line_number ASC, start_offset ASC
+    </select>
+
+    <select id="selectByLineNumber" resultType="com.javaee.documentservice.entity.DocumentAnnotation">
+        SELECT * FROM document_annotation 
+        WHERE document_id = #{documentId} AND line_number = #{lineNumber} AND status = 'active'
+        ORDER BY start_offset ASC
+    </select>
+
+</mapper>

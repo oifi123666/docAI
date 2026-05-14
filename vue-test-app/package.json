@@ -1,0 +1,25 @@
+{
+  "name": "vue-test-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --insecure-http-parser ./node_modules/vite/bin/vite.js",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@stomp/stompjs": "^7.3.0",
+    "axios": "^1.13.5",
+    "element-plus": "^2.14.0",
+    "sockjs-client": "^1.6.1",
+    "stompjs": "^2.3.3",
+    "vue": "^3.5.25",
+    "vue-router": "^5.0.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.5.2",
+    "vite": "^4.5.3"
+  }
+}

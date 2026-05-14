@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: gateway
+  
+  main:
+    web-application-type: reactive
+  
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    gateway:
+      health:
+        enabled: true
+      httpclient:
+        connect-timeout: 10000
+        response-timeout: 60000
+    
+    nacos:
+      discovery:
+        server-addr: nacos:8848
+        namespace: public
+        timeout: 30000
+      client:
+        namespace: public
+        timeout: 30000
+    
+    sentinel:
+      enabled: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:infra_redis}
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      database: 0
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:infra_rabbitmq}
+    port: 5672
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
+    listener:
+      simple:
+        concurrency: 1
+        max-concurrency: 10
+        prefetch: 1
+        auto-startup: true
+        default-requeue-rejected: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+logging:
+  level:
+    org.springframework.cloud.gateway: info
+    org.springframework.cloud.alibaba.sentinel: info
+
+# 容器网络模式路由配置（使用Docker内部服务名称）
+gateway:
+  route:
+    user-uri: http://user:8081
+    file-uri: http://file:8082
+    ai-uri: http://ai:8083
+    document-uri: http://document:8084
+
+custom:
+  jwt:
+    header: Authorization
+    prefix: Bearer 
+  
+  rate-limit:
+    enable: true
+    redis-key-prefix: gateway:rate-limit
+    default-rate: 100
+    default-burst: 200

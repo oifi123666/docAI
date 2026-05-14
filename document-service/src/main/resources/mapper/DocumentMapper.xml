@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.javaee.documentservice.mapper.DocumentMapper">
+
+    <select id="selectByUserId" resultType="com.javaee.documentservice.entity.Document">
+        SELECT * FROM document WHERE user_id = #{userId} AND status = 'active' ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByCategory" resultType="com.javaee.documentservice.entity.Document">
+        SELECT * FROM document WHERE category = #{category} AND status = 'active' ORDER BY create_time DESC
+    </select>
+
+    <select id="searchByKeyword" resultType="com.javaee.documentservice.entity.Document">
+        SELECT * FROM document 
+        WHERE (title LIKE CONCAT('%', #{keyword}, '%') 
+            OR keywords LIKE CONCAT('%', #{keyword}, '%'))
+          AND status = 'active'
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByStatus" resultType="com.javaee.documentservice.entity.Document">
+        SELECT * FROM document WHERE status = #{status} ORDER BY create_time DESC
+    </select>
+
+</mapper>

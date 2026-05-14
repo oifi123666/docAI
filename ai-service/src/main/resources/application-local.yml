@@ -1,0 +1,138 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: ai-service
+  main:
+    allow-bean-definition-overriding: true
+
+  autoconfigure:
+    exclude:
+      - com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration
+      - com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:doc_ai}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    nacos:
+      discovery:
+        enabled: false
+      registry:
+        enabled: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      database: 1
+      timeout: 10000
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1
+          max-idle: 8
+          min-idle: 0
+
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+      chat:
+        model: qwen-plus
+      embedding:
+        model: text-embedding-v1
+      rerank:
+        enabled: true
+        model: gte-rerank-v2
+        timeout-ms: 10000
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:infra_rabbitmq}
+    port: 5672
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+# AI配置
+ai:
+  conversation:
+    max-messages: 100
+    expiry-hours: 24
+  agent:
+    reflection:
+      enabled: true
+  vector:
+    dimension: 1536
+    hnsw:
+      m: 16
+      ef-construction: 200
+      ef: 128
+      max-items: 200000
+  aiops:
+    metrics:
+      retention-ms: 900000
+      persist-interval-ms: 60000
+    detection:
+      interval-ms: 60000
+      window-ms: 300000
+      latency-p95-threshold-ms: 5000
+      error-rate-threshold: 0.1
+      min-request-count: 10
+    alert:
+      cooldown-ms: 300000
+  # 多模型配置
+  models:
+    dashscope:
+      qwen-plus:
+        api-key: ${DASHSCOPE_API_KEY}
+        enabled: true
+      qwen-max:
+        api-key: ${DASHSCOPE_API_KEY}
+        enabled: true
+      qwen-turbo:
+        api-key: ${DASHSCOPE_API_KEY}
+        enabled: true
+      deepseek-v3.2:
+        api-key: ${DASHSCOPE_API_KEY}
+        enabled: true
+
+# MinIO配置
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  bucket: documents
+  url:
+    expiry: 3600
+  recycle:
+    expiry-days: 7
+  delete:
+    confirmation-timeout: 300
+
+# 日志配置
+logging:
+  level:
+    com.javaee.aiservice: debug
+    org.springframework.ai: info
+    org.springframework.security: info
+
+# SpringDoc配置
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html

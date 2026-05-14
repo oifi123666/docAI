@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.javaee.documentservice.mapper.DocumentCommentMapper">
+
+    <select id="selectByDocumentId" resultType="com.javaee.documentservice.entity.DocumentComment">
+        SELECT * FROM document_comment 
+        WHERE document_id = #{documentId} AND status = 'active'
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByParentId" resultType="com.javaee.documentservice.entity.DocumentComment">
+        SELECT * FROM document_comment 
+        WHERE parent_id = #{parentId} AND status = 'active'
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="selectRootCommentsByDocumentId" resultType="com.javaee.documentservice.entity.DocumentComment">
+        SELECT * FROM document_comment 
+        WHERE document_id = #{documentId} AND parent_id IS NULL AND status = 'active'
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

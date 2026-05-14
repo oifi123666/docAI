@@ -1,0 +1,35 @@
+# Build outputs
+target/
+build/
+dist/
+out/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Java archives and bytecode
+*.class
+*.jar
+*.war
+*.ear
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

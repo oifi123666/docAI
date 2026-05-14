@@ -1,0 +1,22 @@
+/* 清除浏览器默认的内外边距 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 让 html, body 和 Vue 的根节点占满全屏 */
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  /* 设置默认字体和背景色 */
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  background-color: #f4f5f7;
+  /* 隐藏超出屏幕的部分，防止出现难看的滚动条 */
+  overflow: hidden;
+}
+
+/* 移除 Element Plus 中超链接的默认下划线 */
+a {
+  text-decoration: none;
+}

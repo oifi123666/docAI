@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  user:
+    image: swr.cn-north-4.myhuaweicloud.com/qxk/user:v1.0
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == node1]
+      restart_policy:
+        condition: on-failure
+    environment:
+      SPRING_APPLICATION_NAME: user
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/doc_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+    networks:
+      - docai-network
+    ports:
+      - "8081:8081"
+
+  gateway:
+    image: swr.cn-north-4.myhuaweicloud.com/qxk/gateway:v1.0
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == manager]
+      restart_policy:
+        condition: on-failure
+    environment:
+      SPRING_APPLICATION_NAME: gateway
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - docai-network
+    ports:
+      - "8080:8080"
+
+  # 文件服务
+  file:
+    image: swr.cn-north-4.myhuaweicloud.com/qxk/file:v1.0
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == node2]
+      restart_policy:
+        condition: on-failure
+    environment:
+      SPRING_APPLICATION_NAME: file
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/doc_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    networks:
+      - docai-network
+    ports:
+      - "8082:8082"
+
+  # AI 服务
+  ai:
+    image: swr.cn-north-4.myhuaweicloud.com/qxk/ai:v1.0
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == node2]
+      restart_policy:
+        condition: on-failure
+    environment:
+      SPRING_APPLICATION_NAME: ai
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    networks:
+      - docai-network
+    ports:
+      - "8083:8083"
+
+  # 文档服务
+  document:
+    image: swr.cn-north-4.myhuaweicloud.com/qxk/document:v1.0
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == node1]
+      restart_policy:
+        condition: on-failure
+    environment:
+      SPRING_APPLICATION_NAME: document
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/doc_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    networks:
+      - docai-network
+    ports:
+      - "8084:8084"
+
+networks:
+  docai-network:
+    external: true

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.javaee.documentservice.mapper.DocumentVersionMapper">
+
+    <select id="selectByDocumentId" resultType="com.javaee.documentservice.entity.DocumentVersion">
+        SELECT * FROM document_version WHERE document_id = #{documentId} ORDER BY version_number DESC
+    </select>
+
+    <select id="selectLatestVersion" resultType="com.javaee.documentservice.entity.DocumentVersion">
+        SELECT * FROM document_version 
+        WHERE document_id = #{documentId} 
+        ORDER BY version_number DESC 
+        LIMIT 1
+    </select>
+
+    <select id="selectMaxVersionNumber" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(version_number), 0) FROM document_version WHERE document_id = #{documentId}
+    </select>
+
+    <select id="selectByDocumentIdAndVersion" resultType="com.javaee.documentservice.entity.DocumentVersion">
+        SELECT * FROM document_version 
+        WHERE document_id = #{documentId} AND version_number = #{versionNumber}
+        LIMIT 1
+    </select>
+
+</mapper>

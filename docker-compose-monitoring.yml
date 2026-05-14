@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Prometheus 服务
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    deploy:
+      placement:
+        constraints: [node.hostname == manager]
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - prometheus-config:/etc/prometheus
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - docai-network
+    ports:
+      - "9090:9090"
+
+  # Grafana 服务
+  grafana:
+    image: grafana/grafana:9.5.0
+    deploy:
+      placement:
+        constraints: [node.hostname == manager]
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${DOC_AI_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - docai-network
+    ports:
+      - "3000:3000"
+
+  # Node Exporter (用于收集节点指标)
+  node-exporter:
+    image: prom/node-exporter:v1.6.0
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+    networks:
+      - docai-network
+
+  # cAdvisor (用于收集容器指标)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - docai-network
+
+networks:
+  docai-network:
+    external: true
+
+volumes:
+  prometheus-config:
+  prometheus-data:
+  grafana-data:

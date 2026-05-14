@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # 监控 Prometheus 本身
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 监控 Docker Swarm 节点
+  - job_name: 'node_exporter'
+    dns_sd_configs:
+      - names:
+          - 'tasks.node-exporter'
+        type: 'A'
+        port: 9100
+
+  # 监控容器
+  - job_name: 'cadvisor'
+    dns_sd_configs:
+      - names:
+          - 'tasks.cadvisor'
+        type: 'A'
+        port: 8080
+
+  # 监控微服务
+  - job_name: 'docai-services'
+    dns_sd_configs:
+      - names:
+          - 'tasks.gateway-service'
+          - 'tasks.user-service'
+          - 'tasks.file-service'
+          - 'tasks.ai-service'
+          - 'tasks.document-service'
+        type: 'A'
+        port: 8080
+
+  # 监控基础设施服务
+  - job_name: 'docai-infra'
+    static_configs:
+      - targets: ['mysql:9104']  # 需要在 MySQL 容器中安装 exporters
+      - targets: ['redis:9121']  # 需要在 Redis 容器中安装 exporters
+      - targets: ['rabbitmq:15692']  # RabbitMQ 自带 Prometheus 端点
+      - targets: ['nacos:8848']  # Nacos 自带监控端点

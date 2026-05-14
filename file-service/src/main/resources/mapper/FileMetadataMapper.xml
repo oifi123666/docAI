@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.javaee.fileservice.mapper.FileMetadataMapper">
+
+    <!-- 根据文件ID获取文件元数据 -->
+    <select id="selectByFileId" resultType="com.javaee.fileservice.entity.FileMetadata">
+        SELECT * FROM file_metadata WHERE file_id = #{fileId}
+    </select>
+
+    <!-- 根据文件名搜索文件 -->
+    <select id="searchByFileName" resultType="com.javaee.fileservice.entity.FileMetadata">
+        SELECT * FROM file_metadata WHERE file_name LIKE CONCAT('%', #{keyword}, '%') OR original_file_name LIKE CONCAT('%', #{keyword}, '%')
+    </select>
+
+</mapper>
