@@ -5,9 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class DocumentSegmenter {
@@ -50,7 +53,17 @@ public class DocumentSegmenter {
     public List<SegmentStrategy.Segment> segment(String documentId, String content, StrategyType strategyType) {
         log.info("开始文档分段: documentId={}, strategy={}", documentId, strategyType);
 
-        SegmentStrategy strategy = getStrategy(strategyType);
+        if (strategyType == null) {
+            strategyType = defaultStrategy;
+        }
+        if (strategyType == StrategyType.AUTO) {
+            return segmentByAuto(documentId, content);
+        }
+        if (strategyType == StrategyType.HYBRID) {
+            return segmentWithHybrid(documentId, content);
+        }
+
+        SegmentStrategy strategy = getSingleStrategy(strategyType);
         List<SegmentStrategy.Segment> segments = strategy.segment(documentId, content);
 
         log.info("文档分段完成: documentId={}, strategy={}, segmentCount={}",
@@ -59,38 +72,38 @@ public class DocumentSegmenter {
         return segments;
     }
 
+    public List<SegmentStrategy.Segment> segmentWithHybrid(String documentId, String content) {
+        return segmentWithHybrid(documentId, content, Integer.MAX_VALUE);
+    }
+
     public List<SegmentStrategy.Segment> segmentWithHybrid(String documentId, String content, int topK) {
         log.info("执行混合分段: documentId={}", documentId);
 
-        List<SegmentStrategy.Segment> allSegments = new java.util.ArrayList<>();
+        List<SegmentStrategy.Segment> allSegments = new ArrayList<>();
 
-        List<SegmentStrategy.Segment> chapterSegments = chapterStrategy.segment(documentId + "_hybrid", content);
+        List<SegmentStrategy.Segment> chapterSegments = chapterStrategy.segment(documentId, content);
+        for (SegmentStrategy.Segment seg : chapterSegments) {
+            seg.setSegmentId(documentId + "_hybrid_chapter_" + seg.getIndex());
+        }
         allSegments.addAll(chapterSegments);
 
-        List<SegmentStrategy.Segment> semanticSegments = semanticStrategy.segment(documentId + "_hybrid", content);
+        List<SegmentStrategy.Segment> semanticSegments = semanticStrategy.segment(documentId, content);
         for (SegmentStrategy.Segment seg : semanticSegments) {
             seg.setSegmentId(documentId + "_hybrid_sem_" + seg.getIndex());
         }
         allSegments.addAll(semanticSegments);
 
-        allSegments.sort((a, b) -> {
-            int lengthCompare = Integer.compare(b.getCharCount(), a.getCharCount());
-            if (lengthCompare != 0) return lengthCompare;
-            return a.getIndex() - b.getIndex();
-        });
-
-        List<SegmentStrategy.Segment> deduplicated = new java.util.ArrayList<>();
-        Map<String, Boolean> contentSeen = new HashMap<>();
+        List<SegmentStrategy.Segment> deduplicated = new ArrayList<>();
+        Set<String> contentSeen = new LinkedHashSet<>();
 
         for (SegmentStrategy.Segment seg : allSegments) {
             String normalized = seg.getContent().toLowerCase().replaceAll("\\s+", "");
-            if (!contentSeen.containsKey(normalized) || !contentSeen.get(normalized)) {
+            if (contentSeen.add(normalized)) {
                 deduplicated.add(seg);
-                contentSeen.put(normalized, true);
             }
         }
 
-        int limit = Math.min(topK, deduplicated.size());
+        int limit = topK <= 0 ? deduplicated.size() : Math.min(topK, deduplicated.size());
         List<SegmentStrategy.Segment> finalResult = deduplicated.subList(0, limit);
 
         for (int i = 0; i < finalResult.size(); i++) {
@@ -141,15 +154,13 @@ public class DocumentSegmenter {
         return false;
     }
 
-    private SegmentStrategy getStrategy(StrategyType strategyType) {
+    private SegmentStrategy getSingleStrategy(StrategyType strategyType) {
         switch (strategyType) {
             case FIXED_LENGTH:
                 return fixedLengthStrategy;
             case CHAPTER:
                 return chapterStrategy;
             case SEMANTIC:
-                return semanticStrategy;
-            case HYBRID:
                 return semanticStrategy;
             default:
                 return chapterStrategy;
