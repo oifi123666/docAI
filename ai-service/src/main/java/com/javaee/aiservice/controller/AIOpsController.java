@@ -37,7 +37,6 @@ public class AIOpsController {
     @GetMapping("/monitor")
     @Operation(summary = "获取监控指标", description = "获取系统的监控指标")
     public Result<Map<String, Object>> getMetrics() {
-        requireAdmin();
         Map<String, Object> metrics = monitoringService.getAllMetrics();
         return Result.success(metrics);
     }
@@ -106,7 +105,6 @@ public class AIOpsController {
     public Result<Void> incrementCounter(
             @Parameter(description = "指标名称") @RequestParam String name,
             @Parameter(description = "增量") @RequestParam(defaultValue = "1") long delta) {
-        requireAdmin();
         monitoringService.incrementCounter(name, delta);
         return Result.success();
     }
@@ -119,7 +117,6 @@ public class AIOpsController {
     public Result<Void> recordTimer(
             @Parameter(description = "指标名称") @RequestParam String name,
             @Parameter(description = "耗时(ms)") @RequestParam long duration) {
-        requireAdmin();
         monitoringService.recordTimer(name, duration);
         return Result.success();
     }

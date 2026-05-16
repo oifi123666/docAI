@@ -29,16 +29,16 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:infra_redis}
+      host: infra_redis
       port: 6379
-      password: ${REDIS_PASSWORD}
+      password: docai@2024
       database: 0
 
   rabbitmq:
-    host: ${RABBITMQ_HOST:infra_rabbitmq}
+    host: infra_rabbitmq
     port: 5672
-    username: ${RABBITMQ_USERNAME}
-    password: ${RABBITMQ_PASSWORD}
+    username: guest
+    password: guest
     virtual-host: /
     listener:
       simple:
@@ -64,6 +64,7 @@ gateway:
     user-uri: http://user:8081
     file-uri: http://file:8082
     ai-uri: http://ai:8083
+    ai-ws-uri: ws://ai:8083
     document-uri: http://document:8084
 
 custom:
