@@ -49,7 +49,7 @@ mybatis-plus:
 # 服务器配置
 server:
   port: 8081
-  address: ${SERVER_ADDRESS}
+  address: ${SERVER_ADDRESS:0.0.0.0}
   servlet:
     context-path: /
 

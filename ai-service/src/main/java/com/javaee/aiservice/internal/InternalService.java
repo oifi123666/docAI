@@ -1,9 +1,6 @@
 package com.javaee.aiservice.internal;
 
 import com.javaee.aiservice.security.RequestUserContext;
-import com.javaee.aiservice.service.FileDeleteService;
-import com.javaee.aiservice.service.FileDownloadService;
-import com.javaee.aiservice.service.FileUploadService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,18 +21,9 @@ public class InternalService {
     private static final Logger log = LoggerFactory.getLogger(InternalService.class);
 
     @Autowired
-    private FileDeleteService fileDeleteService;
-
-    @Autowired
-    private FileUploadService fileUploadService;
-
-    @Autowired
-    private FileDownloadService fileDownloadService;
-
-    @Autowired
     private RequestUserContext requestUserContext;
 
-    private static final Set<String> DESTRUCTIVE_SKILLS = Set.of("file-delete", "file-version-switch");
+    private static final Set<String> DESTRUCTIVE_SKILLS = Set.of("file-delete", "file-restore", "file-version-switch");
 
     /**
      * 检查权限
@@ -105,16 +93,6 @@ public class InternalService {
                     "objectName", "对象名称（必填）",
                     "requireConfirmation", "是否需要确认（可选）",
                     "confirmationToken", "确认token（确认时使用）"
-                ));
-                break;
-            case "file-upload":
-                description.put("name", "文件上传");
-                description.put("description", "上传文件到指定存储桶");
-                description.put("parameters", Map.of(
-                    "bucketName", "存储桶名称（可选）",
-                    "filePath", "文件路径（必填）",
-                    "objectName", "对象名称（可选）",
-                    "remark", "备注（可选）"
                 ));
                 break;
             case "file-download":

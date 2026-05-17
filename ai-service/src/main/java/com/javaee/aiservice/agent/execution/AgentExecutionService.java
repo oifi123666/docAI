@@ -228,6 +228,10 @@ public class AgentExecutionService {
                 break;
             }
 
+            if (requiresAction || "tool_call_limit".equals(stoppedReason)) {
+                break;
+            }
+
             AgentReflection reflection = reflectAfterIteration(request, plan, toolResults, context,
                     iteration, maxIterations, traceId, userId);
             if (reflection != null) {
@@ -236,9 +240,6 @@ public class AgentExecutionService {
                 timeline.add(reflectionTimelineEvent(iteration, reflection));
             }
 
-            if (requiresAction || "tool_call_limit".equals(stoppedReason)) {
-                break;
-            }
             if (iteration >= maxIterations) {
                 if (reflection != null && !reflection.isComplete()) {
                     stoppedReason = "max_iterations";
@@ -284,6 +285,7 @@ public class AgentExecutionService {
         context.put("lastReflections", reflections);
         contextManager.updateContext(conversationId, context);
 
+        Map<String, Object> pendingApproval = requiresAction ? pendingApprovalFrom(plan, toolResults) : Map.of();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", requiresAction ? "action_required" : resolveStatus(toolResults));
         response.put("traceId", traceId);
@@ -301,14 +303,105 @@ public class AgentExecutionService {
         response.put("stoppedReason", stoppedReason);
         response.put("durationMs", System.currentTimeMillis() - startedAt);
         response.put("userId", userId);
+        if (!pendingApproval.isEmpty()) {
+            response.put("pendingApproval", pendingApproval);
+        }
         taskRegistry.save(traceId, response);
-        publishTaskEvent("task_finished", traceId, userId, String.valueOf(response.get("status")), 100,
-                "Agent 任务结束: " + stoppedReason, response);
+        if (requiresAction) {
+            publishTaskEvent("task_waiting_user", traceId, userId, String.valueOf(response.get("status")), 95,
+                    "Agent 任务等待用户确认或补充信息", response);
+        } else {
+            publishTaskEvent("task_finished", traceId, userId, String.valueOf(response.get("status")), 100,
+                    "Agent 任务结束: " + stoppedReason, response);
+        }
         return response;
     }
 
     public List<AgentToolDefinition> listTools() {
         return toolRegistry.list();
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> confirmApproval(AgentExecutionRequest request) {
+        String userId = requestUserContext.getRequiredUserId();
+        String token = approvalTokenFrom(request);
+        Map<String, Object> snapshot = taskRegistry.findByApprovalToken(token);
+        if (snapshot.isEmpty()) {
+            return Map.of("status", "not_found", "message", "未找到待确认任务或审批已失效");
+        }
+        assertSnapshotOwner(snapshot, userId, "无权确认该任务");
+
+        Map<String, Object> pending = snapshot.get("pendingApproval") instanceof Map<?, ?> raw
+                ? new LinkedHashMap<>((Map<String, Object>) raw)
+                : new LinkedHashMap<>();
+        String stepId = asString(pending.get("stepId"));
+        AgentPlanStep step = findStep(snapshot.get("plan"), stepId);
+        if (step == null) {
+            return Map.of("status", "step_not_found", "traceId", snapshot.get("traceId"), "stepId", stepId);
+        }
+        step.getParams().put("agentApprovalToken", token);
+
+        AgentExecutionRequest resumed = new AgentExecutionRequest();
+        resumed.setTask(asString(snapshot.get("task")));
+        resumed.setUserId(userId);
+        resumed.setConversationId(asString(snapshot.get("conversationId")));
+        resumed.setModel(request == null ? null : request.getModel());
+        resumed.setContext(snapshot.get("context") instanceof Map<?, ?> raw
+                ? new HashMap<>((Map<String, Object>) raw)
+                : new HashMap<>());
+
+        long started = System.currentTimeMillis();
+        AgentToolResult result = executeStep(step, resumed, resumed.getContext());
+        decorateResult(result, step, started);
+        step.setStatus(normalizeStatus(result, step));
+        step.setObservation(result.getMessage());
+        step.setAttempts(step.getAttempts() + 1);
+        mergeToolResultIntoContext(resumed.getContext(), result, step);
+        internalService.logAudit(step.getToolName(), step.getParams(), objectMapper.convertValue(result, new TypeReference<>() {}));
+
+        List<AgentToolResult> toolResults = convertToolResults(snapshot.get("toolResults"));
+        toolResults.removeIf(existing -> stepId != null && stepId.equals(existing.getStepId()));
+        toolResults.add(result);
+
+        List<Map<String, Object>> timeline = snapshot.get("timeline") instanceof List<?> rawTimeline
+                ? new ArrayList<>((List<Map<String, Object>>) rawTimeline)
+                : new ArrayList<>();
+        timeline.add(timelineEvent(intValue(snapshot.get("iterations"), 1), step, result));
+
+        snapshot.put("plan", replaceStep(snapshot.get("plan"), step));
+        snapshot.put("toolResults", toolResults);
+        snapshot.put("timeline", timeline);
+        snapshot.put("context", resumed.getContext());
+        snapshot.put("pendingApproval", null);
+        snapshot.put("status", result.isRequiresAction() ? "action_required" : result.getStatus());
+        snapshot.put("stoppedReason", result.isRequiresAction() ? "action_required" : result.getStatus());
+        snapshot.put("answer", result.getMessage());
+        snapshot.put("resumedAt", System.currentTimeMillis());
+        taskRegistry.save(asString(snapshot.get("traceId")), snapshot);
+
+        publishTaskEvent(result.isRequiresAction() ? "task_waiting_user" : "task_finished",
+                asString(snapshot.get("traceId")), userId, String.valueOf(snapshot.get("status")),
+                result.isRequiresAction() ? 95 : 100,
+                result.isRequiresAction() ? "Agent 任务仍需用户处理" : "Agent 任务已确认并继续执行",
+                snapshot);
+        return snapshot;
+    }
+
+    public boolean cancelApproval(String token, String userId) {
+        Map<String, Object> snapshot = taskRegistry.findByApprovalToken(token);
+        boolean removed = agentApprovalService.cancel(token);
+        if (snapshot.isEmpty()) {
+            return removed;
+        }
+        assertSnapshotOwner(snapshot, userId, "无权取消该任务");
+        snapshot.put("status", "cancelled");
+        snapshot.put("stoppedReason", "approval_cancelled");
+        snapshot.put("pendingApproval", null);
+        snapshot.put("cancelledAt", System.currentTimeMillis());
+        taskRegistry.save(asString(snapshot.get("traceId")), snapshot);
+        publishTaskEvent("task_cancelled", asString(snapshot.get("traceId")), userId, "cancelled", 100,
+                "用户已否定高危操作，Agent 任务取消", snapshot);
+        return true;
     }
 
     private void publishTaskEvent(String eventType, String traceId, String userId, String status,
@@ -321,6 +414,93 @@ public class AgentExecutionService {
         event.setProgress(progress);
         event.setPayload(payload);
         progressBroadcaster.publish(event);
+    }
+
+    private Map<String, Object> pendingApprovalFrom(List<AgentPlanStep> plan, List<AgentToolResult> toolResults) {
+        if (toolResults == null || toolResults.isEmpty()) {
+            return Map.of();
+        }
+        AgentToolResult last = toolResults.get(toolResults.size() - 1);
+        if (!last.isRequiresAction() || last.getData() == null || !last.getData().containsKey("agentApprovalToken")) {
+            return Map.of();
+        }
+        AgentPlanStep step = findStep(plan, last.getStepId());
+        Map<String, Object> pending = new LinkedHashMap<>();
+        pending.put("agentApprovalToken", last.getData().get("agentApprovalToken"));
+        pending.put("expiresAt", last.getData().get("expiresAt"));
+        pending.put("stepId", last.getStepId());
+        pending.put("toolName", last.getToolName());
+        pending.put("params", step == null ? last.getData().get("params") : step.getParams());
+        pending.put("message", last.getMessage());
+        pending.put("createdAt", System.currentTimeMillis());
+        return pending;
+    }
+
+    private String approvalTokenFrom(AgentExecutionRequest request) {
+        if (request == null || request.getContext() == null) {
+            return null;
+        }
+        return asString(request.getContext().get("agentApprovalToken"));
+    }
+
+    private void assertSnapshotOwner(Map<String, Object> snapshot, String userId, String message) {
+        String owner = asString(snapshot.get("userId"));
+        if (!requestUserContext.isAdmin() && !valueOrDefault(owner, "").equals(userId)) {
+            throw new SecurityException(message);
+        }
+    }
+
+    private AgentPlanStep findStep(Object planObj, String stepId) {
+        if (planObj instanceof List<?> list) {
+            for (Object item : list) {
+                AgentPlanStep step = toPlanStep(item);
+                if (step != null && (stepId == null || stepId.equals(step.getId()))) {
+                    return step;
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<AgentPlanStep> replaceStep(Object planObj, AgentPlanStep replacement) {
+        List<AgentPlanStep> result = new ArrayList<>();
+        if (planObj instanceof List<?> list) {
+            for (Object item : list) {
+                AgentPlanStep step = toPlanStep(item);
+                if (step == null) {
+                    continue;
+                }
+                result.add(replacement.getId().equals(step.getId()) ? replacement : step);
+            }
+        }
+        if (result.isEmpty()) {
+            result.add(replacement);
+        }
+        return result;
+    }
+
+    private AgentPlanStep toPlanStep(Object item) {
+        if (item instanceof AgentPlanStep step) {
+            return step;
+        }
+        if (item instanceof Map<?, ?> map) {
+            return objectMapper.convertValue(map, AgentPlanStep.class);
+        }
+        return null;
+    }
+
+    private List<AgentToolResult> convertToolResults(Object toolResultsObj) {
+        List<AgentToolResult> results = new ArrayList<>();
+        if (toolResultsObj instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof AgentToolResult result) {
+                    results.add(result);
+                } else if (item instanceof Map<?, ?> map) {
+                    results.add(objectMapper.convertValue(map, AgentToolResult.class));
+                }
+            }
+        }
+        return results;
     }
 
     private int progressOf(int current, int total) {
@@ -635,7 +815,7 @@ public class AgentExecutionService {
                 每个数组元素包含: id, description, toolName, params, reasoning。
                 只能从工具列表中选择toolName；如不需要工具，使用direct-answer。
                 多步任务可以输出多个步骤，但不要超过5步；参数必须来自用户任务或上下文，不确定时先用direct-answer询问澄清。
-                对危险操作(file-delete,file-version-switch)必须设置requireConfirmation=true。
+                对危险操作(file-delete,file-restore,file-version-switch)必须等待用户确认；不要规划文件上传，文件上传必须由用户通过页面或上传接口自行完成。
 
                 工具列表:
                 %s
@@ -913,8 +1093,6 @@ public class AgentExecutionService {
             tool = "text-correct";
         } else if (lower.contains("ppt") || containsAny(task, "演示文稿", "幻灯片")) {
             tool = "html-ppt-generate";
-        } else if (containsAny(task, "上传")) {
-            tool = "file-upload";
         } else if (containsAny(task, "下载")) {
             tool = "file-download-url";
         } else if (containsAny(task, "删除")) {
@@ -1183,8 +1361,6 @@ public class AgentExecutionService {
             case "text-analyze" -> executeAnalyze(params);
             case "keyword-extract" -> executeKeywords(params);
             case "text-correct" -> executeTextCorrect(params);
-            case "file-upload" -> AgentToolResult.actionRequired(tool, "文件上传需要通过 /api/ai/upload 或 /api/skills/file/upload 传入 MultipartFile。",
-                    Map.of("uploadEndpoints", List.of("/api/ai/upload", "/api/skills/file/upload")));
             case "file-download-url" -> executeFileDownloadUrl(params);
             case "file-delete" -> executeFileDelete(params, request.getUserId());
             case "file-restore" -> executeFileRestore(params);

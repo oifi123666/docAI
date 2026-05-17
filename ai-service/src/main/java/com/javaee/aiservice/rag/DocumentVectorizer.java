@@ -23,7 +23,7 @@ public class DocumentVectorizer {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentVectorizer.class);
 
-    @Value("${spring.ai.dashscope.api-key}")
+    @Value("${spring.ai.dashscope.embedding.api-key:${spring.ai.dashscope.api-key}}")
     private String apiKey;
 
     @Value("${spring.ai.dashscope.embedding.model:text-embedding-v4}")

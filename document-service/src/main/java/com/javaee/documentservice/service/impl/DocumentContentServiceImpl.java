@@ -1,6 +1,7 @@
 package com.javaee.documentservice.service.impl;
 
 import com.javaee.common.exception.BusinessException;
+import com.javaee.documentservice.security.BucketPermissionService;
 import com.javaee.documentservice.service.DocumentContentService;
 import io.minio.*;
 import org.slf4j.Logger;
@@ -27,6 +28,9 @@ public class DocumentContentServiceImpl implements DocumentContentService {
     @Value("${minio.bucket-name:document}")
     private String bucketName;
 
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
+
     /**
      * 获取文档内容在MinIO中的存储键
      */
@@ -37,6 +41,7 @@ public class DocumentContentServiceImpl implements DocumentContentService {
     @Override
     public boolean saveContent(String documentId, String content) {
         try {
+            bucketPermissionService.assertCanAccess(bucketName);
             ensureBucketExists();
             String contentKey = getContentKey(documentId);
             byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
@@ -63,6 +68,7 @@ public class DocumentContentServiceImpl implements DocumentContentService {
     @Override
     public String getContent(String documentId) {
         try {
+            bucketPermissionService.assertCanAccess(bucketName);
             String contentKey = getContentKey(documentId);
             logger.info("Getting document content from MinIO, bucket: {}, key: {}", bucketName, contentKey);
             
@@ -86,6 +92,7 @@ public class DocumentContentServiceImpl implements DocumentContentService {
     @Override
     public boolean deleteContent(String documentId) {
         try {
+            bucketPermissionService.assertCanAccess(bucketName);
             String contentKey = getContentKey(documentId);
             logger.info("Deleting document content from MinIO, bucket: {}, key: {}", bucketName, contentKey);
             

@@ -1,17 +1,17 @@
 package com.javaee.aiservice.skills;
 
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.service.MinIOService;
-import com.javaee.aiservice.vo.FileUploadVO;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
 
 public class FileUploadSkill implements Skill {
 
     private final MinIOService minIOService;
+    private final BucketPermissionService bucketPermissionService;
 
-    public FileUploadSkill(MinIOService minIOService) {
+    public FileUploadSkill(MinIOService minIOService, BucketPermissionService bucketPermissionService) {
         this.minIOService = minIOService;
+        this.bucketPermissionService = bucketPermissionService;
     }
 
     @Override
@@ -35,6 +35,7 @@ public class FileUploadSkill implements Skill {
         String objectName = parameters.length > 2 && parameters[2] != null ? (String) parameters[2] : null;
 
         try {
+            bucketPermissionService.assertCanAccess(bucketName);
             return minIOService.uploadFile(file, bucketName, objectName);
         } catch (Exception e) {
             throw new RuntimeException("文件上传失败: " + e.getMessage(), e);

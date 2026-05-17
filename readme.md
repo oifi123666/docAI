@@ -398,7 +398,7 @@ services:
       restart_policy:
         condition: on-failure
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: 123456
       MYSQL_DATABASE: doc_ai
     volumes:
       - mysql-data:/var/lib/mysql
@@ -417,7 +417,7 @@ services:
         max_replicas_per_node: 1
       restart_policy:
         condition: on-failure
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass your_redis_password
     volumes:
       - redis-data:/data
     networks:
@@ -435,8 +435,8 @@ services:
       restart_policy:
         condition: on-failure
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     networks:
       - docai-network
     ports:
@@ -466,7 +466,7 @@ services:
 
   # Nacos
   nacos:
-    image: ${NACOS_USERNAME}/${NACOS_PASSWORD}-server:v2.2.0
+    image: nacos/nacos-server:v2.2.0
     deploy:
       placement:
         constraints: [node.hostname == manager]
@@ -480,7 +480,7 @@ services:
       MYSQL_SERVICE_PORT: 3306
       MYSQL_SERVICE_DB_NAME: nacos_config
       MYSQL_SERVICE_USER: root
-      MYSQL_SERVICE_PASSWORD: ${NACOS_MYSQL_PASSWORD}
+      MYSQL_SERVICE_PASSWORD: 123456
     volumes:
       - nacos-data:/home/nacos/data
     networks:
@@ -547,7 +547,7 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_REDIS_PASSWORD: your_redis_password
     networks:
       - docai-network
     ports:
@@ -566,8 +566,8 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/doc_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 123456
     networks:
       - docai-network
     ports:
@@ -586,8 +586,8 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/doc_ai?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USERNAME}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 123456
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -609,10 +609,10 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_REDIS_PASSWORD: your_redis_password
       SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
-      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
     networks:
       - docai-network
     ports:

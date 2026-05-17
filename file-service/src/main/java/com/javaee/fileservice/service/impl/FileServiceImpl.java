@@ -1,12 +1,10 @@
 package com.javaee.fileservice.service.impl;
 
 import com.javaee.fileservice.config.FileStorageConfig;
-import com.javaee.fileservice.config.MinioConfig;
+import com.javaee.fileservice.security.BucketPermissionService;
 import com.javaee.fileservice.service.FileMetadataService;
 import com.javaee.fileservice.service.FileService;
 import com.javaee.fileservice.util.FileUtils;
-import com.javaee.fileservice.util.Md5Utils;
-import com.javaee.fileservice.util.PathUtils;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.GetObjectArgs;
@@ -22,7 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
@@ -47,12 +44,16 @@ public class FileServiceImpl implements FileService {
     @Autowired
     private MinioClient minioClient;
 
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
+
     // 用于存储分片上传的临时文件
     private final ConcurrentMap<String, ConcurrentMap<Integer, File>> chunkMap = new ConcurrentHashMap<>();
 
     @Override
     public String upload(MultipartFile file) {
         try {
+            assertMinioBucketAccess();
             // 生成文件ID
             String fileId = UUID.randomUUID().toString();
             String fileName = file.getOriginalFilename();
@@ -162,6 +163,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public void uploadChunk(MultipartFile chunk, String fileId, int chunkIndex, int totalChunks) {
         try {
+            assertMinioBucketAccess();
             // 确保文件ID对应的分片映射存在
             chunkMap.computeIfAbsent(fileId, k -> new ConcurrentHashMap<>());
             ConcurrentMap<Integer, File> chunks = chunkMap.get(fileId);
@@ -178,6 +180,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public String mergeChunk(String fileId, String fileName) {
         try {
+            assertMinioBucketAccess();
             // 获取分片文件
             ConcurrentMap<Integer, File> chunks = chunkMap.get(fileId);
             if (chunks == null || chunks.isEmpty()) {
@@ -279,6 +282,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public byte[] download(String fileId) {
         try {
+            assertMinioBucketAccess();
             // 尝试从数据库获取文件元数据
             com.javaee.fileservice.entity.FileMetadata fileMetadata = null;
             String storageFileName = null;
@@ -344,6 +348,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public void delete(String fileId) {
         try {
+            assertMinioBucketAccess();
             // 尝试从数据库获取文件元数据
             com.javaee.fileservice.entity.FileMetadata fileMetadata = null;
             String storageFileName = null;
@@ -464,6 +469,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public void rename(String fileId, String newName) {
         try {
+            assertMinioBucketAccess();
             // 尝试从数据库获取文件元数据
             com.javaee.fileservice.entity.FileMetadata fileMetadata = null;
             String storageFileName = null;
@@ -581,6 +587,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public void move(String fileId, String targetPath) {
         try {
+            assertMinioBucketAccess();
             // 尝试从数据库获取文件元数据
             com.javaee.fileservice.entity.FileMetadata fileMetadata = null;
             String storageFileName = null;
@@ -690,6 +697,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public String copy(String fileId, String targetPath) {
         try {
+            assertMinioBucketAccess();
             // 尝试从数据库获取文件元数据
             com.javaee.fileservice.entity.FileMetadata fileMetadata = null;
             String storageFileName = null;
@@ -815,6 +823,12 @@ public class FileServiceImpl implements FileService {
         boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
         if (!exists) {
             minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
+        }
+    }
+
+    private void assertMinioBucketAccess() {
+        if ("minio".equals(fileStorageConfig.getStorageType())) {
+            bucketPermissionService.assertCanAccess(fileStorageConfig.getBucketName());
         }
     }
 

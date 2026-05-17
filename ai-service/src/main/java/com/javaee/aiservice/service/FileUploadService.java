@@ -1,6 +1,7 @@
 package com.javaee.aiservice.service;
 
 import com.javaee.aiservice.dto.FileUploadDTO;
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.vo.FileUploadVO;
 import org.slf4j.Logger;
@@ -32,6 +33,9 @@ public class FileUploadService {
     @Autowired
     private RequestUserContext requestUserContext;
 
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
+
     @Value("${minio.bucket:documents}")
     private String defaultBucket;
 
@@ -50,6 +54,7 @@ public class FileUploadService {
         try {
             // 确定存储桶名称
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
             
             // 确定对象名称（文件路径）
             String objectName = dto.getObjectName() != null ? dto.getObjectName() : generateObjectName(file);

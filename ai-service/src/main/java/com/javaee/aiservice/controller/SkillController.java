@@ -202,7 +202,7 @@ public class SkillController {
     }
     
     @PostMapping(value = "/html-ppt/generate")
-    @Operation(summary = "生成HTML PPT（返回JSON）", description = "生成HTML PPT，支持选择不同AI模型：qwen-plus, qwen-max, qwen-turbo, deepseek-v3.2")
+    @Operation(summary = "生成HTML PPT（返回JSON）", description = "生成HTML PPT，支持选择不同AI模型：qwen3.6-plus, glm-5, kimi-k2.5, MiniMax-M2.5")
     public Result<java.util.Map<String, Object>> generateHtmlPpt(@RequestBody HtmlPptRequest request) {
         String outline = request.getOutline();
         String theme = request.getTheme();

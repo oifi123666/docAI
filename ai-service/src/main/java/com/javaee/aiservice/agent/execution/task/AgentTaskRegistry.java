@@ -65,6 +65,27 @@ public class AgentTaskRegistry {
         return Collections.emptyMap();
     }
 
+    public Map<String, Object> findByApprovalToken(String token) {
+        if (token == null || token.isBlank()) {
+            return Collections.emptyMap();
+        }
+        for (Map<String, Object> snapshot : tasks.values()) {
+            Object pending = snapshot.get("pendingApproval");
+            if (pending instanceof Map<?, ?> map && token.equals(String.valueOf(map.get("agentApprovalToken")))) {
+                return snapshot;
+            }
+        }
+        for (Map<String, Object> snapshot : listAll()) {
+            Object pending = snapshot.get("pendingApproval");
+            if (pending instanceof Map<?, ?> map && token.equals(String.valueOf(map.get("agentApprovalToken")))) {
+                Map<String, Object> loaded = new LinkedHashMap<>(snapshot);
+                tasks.put(String.valueOf(loaded.get("traceId")), loaded);
+                return loaded;
+            }
+        }
+        return Collections.emptyMap();
+    }
+
     public List<Map<String, Object>> listByUser(String userId) {
         if (userId == null) {
             return List.of();

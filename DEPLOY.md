@@ -107,10 +107,10 @@ docker swarm join --token <token> ${DOC_AI_MANAGER_HOST}:2377
 
 ## 默认账号
 
-- **MySQL**：${MYSQL_USERNAME} / ${MYSQL_PASSWORD}
-- **Nacos**：${NACOS_USERNAME} / ${NACOS_PASSWORD}
-- **MinIO**：${MINIO_ACCESS_KEY} / ${MINIO_SECRET_KEY}
-- **RabbitMQ**：${RABBITMQ_USERNAME} / ${RABBITMQ_PASSWORD}
+- **MySQL**：root / 123456
+- **Nacos**：nacos / nacos
+- **MinIO**：${MINIO_ROOT_USER} / ${MINIO_ROOT_PASSWORD}
+- **RabbitMQ**：guest / guest
 - **系统用户**：
   - 管理员：admin / ${DOC_AI_ADMIN_PASSWORD}
   - 普通用户：user / ${DOC_AI_USER_PASSWORD}
@@ -220,7 +220,7 @@ docker service update --image docai/gateway-service:1.0.1 docai-services_gateway
 
 - **备份 MySQL 数据**：
   ```bash
-  docker exec $(docker ps -qf name=docai-infra_mysql) mysqldump -uroot -p"${MYSQL_PASSWORD}" doc_ai > doc_ai_backup.sql
+  docker exec $(docker ps -qf name=docai-infra_mysql) mysqldump -uroot -p123456 doc_ai > doc_ai_backup.sql
   ```
 
 - **备份 MinIO 数据**：

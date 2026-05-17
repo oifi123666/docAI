@@ -86,13 +86,13 @@ public class AIController {
      * @return 摘要结果
      */
     @PostMapping("/summarize")
-    @Operation(summary = "文档摘要", description = "对文档进行智能摘要，支持选择不同模型：qwen-plus, qwen-max, qwen-turbo, deepseek-v3.2")
+    @Operation(summary = "文档摘要", description = "对文档进行智能摘要，支持选择不同模型：qwen3.6-plus, glm-5, kimi-k2.5, MiniMax-M2.5")
     public Result<TextSummarizeVO> summarize(
             @RequestBody TextSummarizeDTO dto,
-            @Parameter(description = "选择AI模型（可选，默认qwen-plus）", 
+            @Parameter(description = "选择AI模型（可选，默认qwen3.6-plus）", 
                       in = ParameterIn.QUERY,
-                      schema = @Schema(allowableValues = {"qwen-plus", "qwen-max", "qwen-turbo", "deepseek-v3.2"}, 
-                                        defaultValue = "qwen-plus"))
+                      schema = @Schema(allowableValues = {"qwen3.6-plus", "glm-5", "kimi-k2.5", "MiniMax-M2.5"}, 
+                                        defaultValue = "qwen3.6-plus"))
             @RequestParam(required = false) String model) {
         TextSummarizeVO vo = aiService.summarize(dto, model);
         return Result.success(vo);
@@ -105,13 +105,13 @@ public class AIController {
      * @return 关键词结果
      */
     @PostMapping("/keywords")
-    @Operation(summary = "关键词提取", description = "从文档中提取关键词，支持选择不同模型：qwen-plus, qwen-max, qwen-turbo, deepseek-v3.2")
+    @Operation(summary = "关键词提取", description = "从文档中提取关键词，支持选择不同模型：qwen3.6-plus, glm-5, kimi-k2.5, MiniMax-M2.5")
     public Result<KeywordExtractVO> extractKeywords(
             @RequestBody KeywordExtractDTO dto,
-            @Parameter(description = "选择AI模型（可选，默认qwen-plus）", 
+            @Parameter(description = "选择AI模型（可选，默认qwen3.6-plus）", 
                       in = ParameterIn.QUERY,
-                      schema = @Schema(allowableValues = {"qwen-plus", "qwen-max", "qwen-turbo", "deepseek-v3.2"}, 
-                                        defaultValue = "qwen-plus"))
+                      schema = @Schema(allowableValues = {"qwen3.6-plus", "glm-5", "kimi-k2.5", "MiniMax-M2.5"}, 
+                                        defaultValue = "qwen3.6-plus"))
             @RequestParam(required = false) String model) {
         KeywordExtractVO vo = aiService.extractKeywords(dto, model);
         return Result.success(vo);

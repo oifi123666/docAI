@@ -11,6 +11,7 @@ import java.util.Map;
 public class MultiModelConfig {
     
     private Map<String, ModelConfig> dashscope = new HashMap<>();
+    private Map<String, ModelConfig> openai = new HashMap<>();
     
     public Map<String, ModelConfig> getDashscope() {
         return dashscope;
@@ -20,9 +21,18 @@ public class MultiModelConfig {
         this.dashscope = dashscope;
     }
     
+    public Map<String, ModelConfig> getOpenai() {
+        return openai;
+    }
+    
+    public void setOpenai(Map<String, ModelConfig> openai) {
+        this.openai = openai;
+    }
+    
     public static class ModelConfig {
         private String apiKey;
         private String model;
+        private String baseUrl;
         private boolean enabled = true;
         
         public String getApiKey() {
@@ -39,6 +49,14 @@ public class MultiModelConfig {
         
         public void setModel(String model) {
             this.model = model;
+        }
+        
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+        
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
         }
         
         public boolean isEnabled() {

@@ -8,7 +8,7 @@
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| 配置统一化 | ✅ 通过 | 所有服务使用 ${RABBITMQ_USERNAME}/${RABBITMQ_PASSWORD} 账号 |
+| 配置统一化 | ✅ 通过 | 所有服务使用 guest/guest 账号 |
 | 配置类 Bean 验证 | ✅ 通过 | 交换机、队列、绑定等 Bean 正常创建 |
 | 监听器实现 | ✅ 通过 | 三个服务都有完整的监听器 |
 | 消息发送集成 | ✅ 通过 | 在业务 Controller 和 Filter 中集成了发送功能 |
@@ -169,7 +169,7 @@ mvn test -Dtest=RabbitMQConfigTest
 
 2. **访问 RabbitMQ 管理界面**
    - URL: http://localhost:15672
-   - 用户名/密码: ${RABBITMQ_USERNAME}/${RABBITMQ_PASSWORD}
+   - 用户名/密码: guest/guest
 
 3. **启动各个微服务**
 

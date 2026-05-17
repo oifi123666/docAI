@@ -2,7 +2,6 @@ package com.javaee.aiservice.controller;
 
 import com.javaee.aiservice.agent.KnowledgeIndexAgent;
 import com.javaee.aiservice.agent.execution.AgentExecutionService;
-import com.javaee.aiservice.agent.execution.approval.AgentApprovalService;
 import com.javaee.aiservice.agent.execution.model.AgentExecutionRequest;
 import com.javaee.aiservice.agent.execution.task.AgentTaskRegistry;
 import com.javaee.aiservice.agent.execution.tool.AgentToolDefinition;
@@ -34,9 +33,6 @@ public class AgentController {
 
     @Autowired
     private AgentExecutionService agentExecutionService;
-
-    @Autowired
-    private AgentApprovalService agentApprovalService;
 
     @Autowired
     private AgentTaskRegistry agentTaskRegistry;
@@ -74,10 +70,10 @@ public class AgentController {
      * 统一Agent链路 - 确认危险操作并继续执行
      */
     @PostMapping("/approvals/confirm")
-    @Operation(summary = "确认危险操作", description = "携带 agentApprovalToken 与原任务参数继续执行 Agent 任务")
+    @Operation(summary = "确认危险操作", description = "携带 agentApprovalToken 继续执行原挂起任务")
     public Result<Map<String, Object>> confirmApproval(@RequestBody AgentExecutionRequest request) {
         request.setUserId(requestUserContext.getRequiredUserId());
-        Map<String, Object> result = agentExecutionService.execute(request);
+        Map<String, Object> result = agentExecutionService.confirmApproval(request);
         return Result.success(result);
     }
 
@@ -87,7 +83,7 @@ public class AgentController {
     @PostMapping("/approvals/{token}/cancel")
     @Operation(summary = "取消危险操作", description = "用户拒绝危险操作时丢弃挂起的审批令牌")
     public Result<Boolean> cancelApproval(@PathVariable String token) {
-        return Result.success(agentApprovalService.cancel(token));
+        return Result.success(agentExecutionService.cancelApproval(token, requestUserContext.getRequiredUserId()));
     }
 
     /**

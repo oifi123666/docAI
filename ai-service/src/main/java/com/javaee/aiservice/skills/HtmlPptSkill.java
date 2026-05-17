@@ -127,18 +127,21 @@ public class HtmlPptSkill implements Skill {
                                 if (i == parts.length - 1 && part.length() > 50) {
                                     notes = part;
                                 } else {
-                                    content.append("<li>").append(escapeHtml(part)).append("</li>");
+                                    content.append("<li>").append(smartEscapeHtml(part)).append("</li>");
                                 }
                             }
                         }
                         content.append("</ul>");
                         
-                        if (notes.isEmpty()) {
-                            notes = "这一页主要讲 " + slideTitle + "，接下来详细介绍...";
+                        String cleanContent = cleanHtml(content.toString());
+                        String cleanNotes = cleanHtml(notes);
+                        
+                        if (cleanNotes.isEmpty()) {
+                            cleanNotes = "这一页主要讲 " + slideTitle + "，接下来详细介绍...";
                         }
                         
-                        log.info("解析出一页：标题[{}]，内容[{}]", slideTitle, content);
-                        slides.add(new Slide("content", slideTitle, "", content.toString(), notes));
+                        log.info("解析出一页：标题[{}]，内容[{}]", slideTitle, cleanContent);
+                        slides.add(new Slide("content", slideTitle, "", cleanContent, cleanNotes));
                     }
                 }
             }
@@ -208,15 +211,16 @@ public class HtmlPptSkill implements Skill {
                     item = item.replaceAll("^[-*•]\\s+", "")
                                .replaceAll("^\\d+[.、)）]\\s*", "")
                                .replaceAll("^Slide\\s*\\d*[:：]\\s*", "");
-                    content.append("<li>").append(escapeHtml(item)).append("</li>");
+                    content.append("<li>").append(smartEscapeHtml(item)).append("</li>");
                 }
                 content.append("</ul>");
                 
+                String cleanContent = cleanHtml(content.toString());
                 String slideTitle = items.get(i);
                 String notes = "这一页主要讲 " + slideTitle + "，接下来详细介绍...";
                 
-                log.info("创建幻灯片：标题[{}]，内容[{}]", slideTitle, content);
-                slides.add(new Slide("content", slideTitle, "", content.toString(), notes));
+                log.info("创建幻灯片：标题[{}]，内容[{}]", slideTitle, cleanContent);
+                slides.add(new Slide("content", slideTitle, "", cleanContent, notes));
             }
         }
         
@@ -297,7 +301,7 @@ public class HtmlPptSkill implements Skill {
                 html.append("        <p class=\"kicker\">// content · ").append(i + 1).append("/").append(slides.size()).append("</p>\n");
                 html.append("        <h2 class=\"h2 anim-fade-up\" data-anim=\"fade-up\">").append(escapeHtml(slide.title)).append("</h2>\n");
                 html.append("        <div class=\"stack mt-l\">\n");
-                html.append("            <div class=\"content\">").append(slide.content).append("</div>\n");
+                html.append("            <div class=\"content\">").append(cleanHtml(slide.content)).append("</div>\n");
                 html.append("        </div>\n");
                 html.append("        <div class=\"deck-footer\">\n");
                 html.append("            <span class=\"slide-number\" data-current=\"").append(i + 1).append("\" data-total=\"").append(slides.size()).append("\"></span>\n");
@@ -305,7 +309,7 @@ public class HtmlPptSkill implements Skill {
             }
             
             html.append("        <aside class=\"notes\">\n");
-            html.append("            <p>").append(slide.notes).append("</p>\n");
+            html.append("            <p>").append(cleanHtml(slide.notes)).append("</p>\n");
             html.append("        </aside>\n");
             
             html.append("    </section>\n");
@@ -325,6 +329,11 @@ public class HtmlPptSkill implements Skill {
         return html.toString();
     }
     
+    private boolean containsHtml(String text) {
+        if (text == null) return false;
+        return text.matches(".*<[a-zA-Z]+[\\s>].*");
+    }
+
     private String escapeHtml(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;")
@@ -332,6 +341,22 @@ public class HtmlPptSkill implements Skill {
                    .replace(">", "&gt;")
                    .replace("\"", "&quot;")
                    .replace("'", "&#039;");
+    }
+
+    private String smartEscapeHtml(String text) {
+        if (containsHtml(text)) {
+            return text;
+        }
+        return escapeHtml(text);
+    }
+
+    private String cleanHtml(String html) {
+        if (html == null) return "";
+        return html.trim()
+                   .replaceAll("\\s+", " ")
+                   .replaceAll(">\\s+<", "><")
+                   .replaceAll("<ul>\\s*</ul>", "")
+                   .trim();
     }
 
     static class Slide {

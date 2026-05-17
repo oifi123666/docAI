@@ -1,6 +1,7 @@
 package com.javaee.aiservice.service;
 
 import com.javaee.aiservice.dto.FileDownloadDTO;
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.vo.FileDownloadVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,9 @@ public class FileDownloadService {
     @Autowired
     private MinIOService minIOService;
 
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
+
     @Value("${minio.bucket:documents}")
     private String defaultBucket;
 
@@ -42,6 +46,7 @@ public class FileDownloadService {
         try {
             // 确定存储桶名称
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
             
             // 确定对象名称
             String objectName = dto.getObjectName();
@@ -76,6 +81,7 @@ public class FileDownloadService {
         try {
             // 确定存储桶名称
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
             
             // 确定对象名称
             String objectName = dto.getObjectName();

@@ -8,7 +8,7 @@
 
 ### 1. 统一配置
 
-- 所有服务的 RabbitMQ 账号统一为 `${RABBITMQ_USERNAME}/${RABBITMQ_PASSWORD}`
+- 所有服务的 RabbitMQ 账号统一为 `guest/guest`
 - 主机地址为 `infra_rabbitmq:5672`
 - 配置文件位置：各个服务的 `application.yml`
 
@@ -82,8 +82,8 @@
 
 2. 访问 RabbitMQ 管理界面验证服务状态：
    - URL: http://localhost:15672
-   - 用户名: ${RABBITMQ_USERNAME}
-   - 密码: ${RABBITMQ_PASSWORD}
+   - 用户名: guest
+   - 密码: guest
    - 确认 Queues 和 Exchanges 标签页能正常访问
 
 ### 测试流程
@@ -103,8 +103,8 @@
    
    {
      "username": "testuser",
-     "password": "${TEST_USER_PASSWORD}",
-     "email": "${TEST_USER_EMAIL}",
+     "password": "Test123456",
+     "email": "test@example.com",
      "phone": "${DOC_AI_ADMIN_PHONE}"
    }
    ```
@@ -154,7 +154,7 @@
 {
   "userId": 1,
   "username": "testuser",
-  "email": "${TEST_USER_EMAIL}",
+  "email": "test@example.com",
   "timestamp": "2026-04-27T10:00:00"
 }
 ```
@@ -216,7 +216,7 @@
 
 ## 注意事项
 
-1. RabbitMQ 默认账号为 ${RABBITMQ_USERNAME}/${RABBITMQ_PASSWORD}，仅适用于开发环境
+1. RabbitMQ 默认账号为 guest/guest，仅适用于开发环境
 2. 生产环境应使用更安全的账号密码
 3. 所有队列都配置为持久化（durable）
 4. 监听器使用 `@Slf4j` 记录日志，方便调试

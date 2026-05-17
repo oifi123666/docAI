@@ -46,13 +46,18 @@ spring:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       chat:
-        model: qwen-plus
+        model: qwen3.6-plus
       embedding:
         model: text-embedding-v1
+        api-key: ${DASHSCOPE_API_KEY}
       rerank:
         enabled: true
-        model: gte-rerank-v2
+        model: qwen3-rerank
         timeout-ms: 10000
+        api-key: ${DASHSCOPE_API_KEY}
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
 
   rabbitmq:
     host: ${RABBITMQ_HOST:infra_rabbitmq}
@@ -96,18 +101,22 @@ ai:
       cooldown-ms: 300000
   # 多模型配置
   models:
-    dashscope:
-      qwen-plus:
-        api-key: ${DASHSCOPE_API_KEY}
+    openai:
+      qwen3.6-plus:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
-      qwen-max:
-        api-key: ${DASHSCOPE_API_KEY}
+      glm-5:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
-      qwen-turbo:
-        api-key: ${DASHSCOPE_API_KEY}
+      kimi-k2.5:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
-      deepseek-v3.2:
-        api-key: ${DASHSCOPE_API_KEY}
+      MiniMax-M2.5:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
 
 # MinIO配置
@@ -116,6 +125,10 @@ minio:
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
   bucket: documents
+  # bucket=permissionGroup1,permissionGroup2; another-bucket=groupA
+  # JWT 中的 role 会作为默认权限组；可额外通过 permissionGroups/groups claim 扩展。
+  bucket-permissions: "documents=admin,user"
+  bucket-permission-default-allow: false
   url:
     expiry: 3600
   recycle:

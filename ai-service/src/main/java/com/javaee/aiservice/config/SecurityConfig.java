@@ -31,7 +31,13 @@ public class SecurityConfig {
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     "/api-docs/**",
-                    "/error"
+                    "/error",
+                    "/",
+                    "/index.html",
+                    "/agent-workbench.html",
+                    "/static/**",
+                    "/api/ai/agent/**",
+                    "/ws/**"
                 ).permitAll()
                 .anyRequest().authenticated()
             )

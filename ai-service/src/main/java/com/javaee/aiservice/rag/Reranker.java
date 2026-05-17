@@ -24,7 +24,7 @@ public class Reranker {
     private static final Logger log = LoggerFactory.getLogger(Reranker.class);
     private static final int MAX_DOCUMENT_CHARS = 4096;
 
-    @Value("${spring.ai.dashscope.api-key:}")
+    @Value("${spring.ai.dashscope.rerank.api-key:${spring.ai.dashscope.api-key}}")
     private String apiKey;
 
     @Value("${spring.ai.dashscope.rerank.model:gte-rerank-v2}")

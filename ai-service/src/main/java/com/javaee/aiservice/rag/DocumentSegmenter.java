@@ -73,41 +73,38 @@ public class DocumentSegmenter {
     }
 
     public List<SegmentStrategy.Segment> segmentWithHybrid(String documentId, String content) {
-        return segmentWithHybrid(documentId, content, Integer.MAX_VALUE);
-    }
-
-    public List<SegmentStrategy.Segment> segmentWithHybrid(String documentId, String content, int topK) {
         log.info("执行混合分段: documentId={}", documentId);
 
-        List<SegmentStrategy.Segment> allSegments = new ArrayList<>();
-
         List<SegmentStrategy.Segment> chapterSegments = chapterStrategy.segment(documentId, content);
-        for (SegmentStrategy.Segment seg : chapterSegments) {
-            seg.setSegmentId(documentId + "_hybrid_chapter_" + seg.getIndex());
-        }
-        allSegments.addAll(chapterSegments);
+        List<SegmentStrategy.Segment> semanticSegments = new ArrayList<>();
 
-        List<SegmentStrategy.Segment> semanticSegments = semanticStrategy.segment(documentId, content);
-        for (SegmentStrategy.Segment seg : semanticSegments) {
-            seg.setSegmentId(documentId + "_hybrid_sem_" + seg.getIndex());
-        }
-        allSegments.addAll(semanticSegments);
-
-        List<SegmentStrategy.Segment> deduplicated = new ArrayList<>();
-        Set<String> contentSeen = new LinkedHashSet<>();
-
-        for (SegmentStrategy.Segment seg : allSegments) {
-            String normalized = seg.getContent().toLowerCase().replaceAll("\\s+", "");
-            if (contentSeen.add(normalized)) {
-                deduplicated.add(seg);
+        for (SegmentStrategy.Segment chapter : chapterSegments) {
+            List<SegmentStrategy.Segment> chapterSemanticSegments =
+                    semanticStrategy.segment(documentId + "_hybrid_chapter_" + chapter.getIndex(), chapter.getContent());
+            if (chapterSemanticSegments.isEmpty()) {
+                semanticSegments.add(chapter);
+                continue;
+            }
+            for (SegmentStrategy.Segment semantic : chapterSemanticSegments) {
+                semantic.setTitle(firstNonBlank(chapter.getTitle(), semantic.getTitle()));
+                semanticSegments.add(semantic);
             }
         }
 
-        int limit = topK <= 0 ? deduplicated.size() : Math.min(topK, deduplicated.size());
-        List<SegmentStrategy.Segment> finalResult = deduplicated.subList(0, limit);
+        List<SegmentStrategy.Segment> finalResult = new ArrayList<>();
+        Set<String> contentSeen = new LinkedHashSet<>();
+        for (SegmentStrategy.Segment seg : semanticSegments) {
+            String normalized = seg.getContent().toLowerCase().replaceAll("\\s+", "");
+            if (contentSeen.add(normalized)) {
+                finalResult.add(seg);
+            }
+        }
 
         for (int i = 0; i < finalResult.size(); i++) {
-            finalResult.get(i).setIndex(i);
+            SegmentStrategy.Segment segment = finalResult.get(i);
+            segment.setSegmentId(documentId + "_hybrid_" + i);
+            segment.setDocumentId(documentId);
+            segment.setIndex(i);
         }
 
         log.info("混合分段完成: documentId={}, 最终分段数={}", documentId, finalResult.size());
@@ -181,5 +178,9 @@ public class DocumentSegmenter {
             strategies.put(type.name(), type.getDescription());
         }
         return strategies;
+    }
+
+    private String firstNonBlank(String first, String second) {
+        return first != null && !first.trim().isEmpty() ? first : second;
     }
 }

@@ -14,9 +14,9 @@ spring:
       - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
 
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:doc_ai}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: ${MYSQL_USERNAME}
-    password: ${MYSQL_PASSWORD}
+    url: jdbc:mysql://${MYSQL_LOCAL_HOST:localhost}:${MYSQL_LOCAL_PORT:3306}/${MYSQL_DATABASE:doc_ai}?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_LOCAL_USERNAME:root}
+    password: ${MYSQL_LOCAL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   cloud:
@@ -30,9 +30,9 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_LOCAL_HOST:localhost}
       port: 6379
-      password: ${REDIS_PASSWORD}
+      password: ${REDIS_LOCAL_PASSWORD:}
       database: 1
       timeout: 10000
       lettuce:
@@ -46,13 +46,18 @@ spring:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       chat:
-        model: qwen-plus
+        model: qwen3.6-plus
       embedding:
         model: text-embedding-v1
+        api-key: ${DASHSCOPE_API_KEY}
       rerank:
         enabled: true
-        model: gte-rerank-v2
+        model: qwen3-rerank
         timeout-ms: 10000
+        api-key: ${DASHSCOPE_API_KEY}
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
 
   rabbitmq:
     host: ${RABBITMQ_HOST:infra_rabbitmq}
@@ -96,26 +101,32 @@ ai:
       cooldown-ms: 300000
   # 多模型配置
   models:
-    dashscope:
-      qwen-plus:
-        api-key: ${DASHSCOPE_API_KEY}
+    openai:
+      qwen3.6-plus:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
-      qwen-max:
-        api-key: ${DASHSCOPE_API_KEY}
+      glm-5:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
-      qwen-turbo:
-        api-key: ${DASHSCOPE_API_KEY}
+      kimi-k2.5:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
-      deepseek-v3.2:
-        api-key: ${DASHSCOPE_API_KEY}
+      MiniMax-M2.5:
+        api-key: ${OPENAI_API_KEY}
+        base-url: ${OPENAI_BASE_URL:https://coding.dashscope.aliyuncs.com/v1}
         enabled: true
 
 # MinIO配置
 minio:
-  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  endpoint: ${MINIO_LOCAL_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
   bucket: documents
+  bucket-permissions: "documents=admin,user"
+  bucket-permission-default-allow: false
   url:
     expiry: 3600
   recycle:

@@ -6,7 +6,7 @@ services:
     image: prom/prometheus:v2.45.0
     deploy:
       placement:
-        constraints: [node.hostname == manager]
+        constraints: [node.hostname == ${DOC_AI_MANAGER_HOST}]
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -29,14 +29,14 @@ services:
     image: grafana/grafana:9.5.0
     deploy:
       placement:
-        constraints: [node.hostname == manager]
+        constraints: [node.hostname == ${DOC_AI_MANAGER_HOST}]
       replicas: 1
       restart_policy:
         condition: on-failure
     volumes:
       - grafana-data:/var/lib/grafana
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_USER=${RABBITMQ_DEFAULT_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${DOC_AI_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
     networks:

@@ -41,6 +41,11 @@
         .row.compact > * { flex: initial; }
         .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
         .card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: #fff; }
+        .fixed-cards { align-content: start; min-height: 620px; }
+        .fixed-cards.task-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .fixed-cards.job-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .fixed-cards .card { min-height: 190px; display: flex; flex-direction: column; }
+        .fixed-cards .inline-actions { margin-top: auto; }
         .card-title { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; font-weight: 700; }
         .muted { color: var(--muted); font-size: 12px; }
         .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; font-size: 12px; background: #eef3ff; color: var(--primary); white-space: nowrap; }
@@ -69,7 +74,18 @@
         label.muted { display: inline-flex; align-items: center; gap: 6px; }
         .event-stream { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
         .event-item { padding: 8px 10px; border-bottom: 1px dashed var(--border); font-size: 12px; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+        .pagination .row { gap: 8px; }
+        .pagination .row > * { flex: initial; }
+        .pagination-info { color: var(--muted); font-size: 12px; }
         @media (max-width: 960px) { .col-4, .col-6, .col-8 { grid-column: span 12; } }
+        @media (max-width: 1200px) {
+            .fixed-cards.job-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 720px) {
+            .fixed-cards.task-cards,
+            .fixed-cards.job-cards { grid-template-columns: 1fr; min-height: auto; }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
@@ -175,7 +191,8 @@
                 <button class="danger" onclick="cancelTask()">取消任务</button>
                 <button onclick="retryStep()">单步重试</button>
             </div>
-            <div id="tasks" class="cards"></div>
+            <div id="tasks" class="cards fixed-cards task-cards"></div>
+            <div id="taskPagination" class="pagination"></div>
             <pre id="taskOutput">{}</pre>
         </section>
     </div>
@@ -215,7 +232,8 @@
             </select>
             <button class="secondary" onclick="clearJobFilters()">清空筛选</button>
         </div>
-        <div id="jobs" class="cards"></div>
+        <div id="jobs" class="cards fixed-cards job-cards"></div>
+        <div id="jobPagination" class="pagination"></div>
         <pre id="indexOutput">{}</pre>
     </section>
 </main>
@@ -229,6 +247,9 @@ let lastJobs = [];
 let autoRefreshTimer = null;
 let stompClient = null;
 let progressEvents = [];
+const PAGE_SIZE = 6;
+let taskPage = 1;
+let jobPage = 1;
 
 async function api(path, options = {}) {
     const headers = options.headers || { 'Content-Type': 'application/json' };
@@ -275,6 +296,49 @@ function stopCardClick(event) {
     if (event) event.stopPropagation();
 }
 
+function paginate(items, page) {
+    const total = items.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const currentPage = Math.min(Math.max(1, page || 1), totalPages);
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return {
+        currentPage,
+        totalPages,
+        total,
+        items: items.slice(start, start + PAGE_SIZE)
+    };
+}
+
+function renderPagination(targetId, pageInfo, type) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    if (!pageInfo.total) {
+        el.innerHTML = '';
+        return;
+    }
+    const prevAction = type === 'task' ? 'changeTaskPage' : 'changeJobPage';
+    const nextAction = type === 'task' ? 'changeTaskPage' : 'changeJobPage';
+    const start = (pageInfo.currentPage - 1) * PAGE_SIZE + 1;
+    const end = Math.min(pageInfo.currentPage * PAGE_SIZE, pageInfo.total);
+    el.innerHTML = `
+        <div class="pagination-info">第 ${pageInfo.currentPage}/${pageInfo.totalPages} 页，显示 ${start}-${end} / ${pageInfo.total}</div>
+        <div class="row compact">
+            <button class="secondary" ${pageInfo.currentPage <= 1 ? 'disabled' : ''} onclick="${prevAction}(${pageInfo.currentPage - 1})">上一页</button>
+            <button class="secondary" ${pageInfo.currentPage >= pageInfo.totalPages ? 'disabled' : ''} onclick="${nextAction}(${pageInfo.currentPage + 1})">下一页</button>
+        </div>
+    `;
+}
+
+function changeTaskPage(page) {
+    taskPage = page;
+    renderTasks();
+}
+
+function changeJobPage(page) {
+    jobPage = page;
+    renderJobs();
+}
+
 function taskMatchesFilter(task) {
     const text = (document.getElementById('taskFilter')?.value || '').toLowerCase();
     const status = document.getElementById('taskStatusFilter')?.value || '';
@@ -303,12 +367,14 @@ function jobMatchesFilter(job) {
 function clearTaskFilters() {
     document.getElementById('taskFilter').value = '';
     document.getElementById('taskStatusFilter').value = '';
+    taskPage = 1;
     renderTasks();
 }
 
 function clearJobFilters() {
     document.getElementById('jobFilter').value = '';
     document.getElementById('jobStatusFilter').value = '';
+    jobPage = 1;
     renderJobs();
 }
 
@@ -614,11 +680,14 @@ function renderTasks(list = lastTasks) {
     lastTasks = list || [];
     const el = document.getElementById('tasks');
     const filtered = lastTasks.filter(taskMatchesFilter);
+    const pageInfo = paginate(filtered, taskPage);
+    taskPage = pageInfo.currentPage;
     if (!filtered.length) {
         el.innerHTML = '<div class="empty">暂无任务历史</div>';
+        renderPagination('taskPagination', pageInfo, 'task');
         return;
     }
-    el.innerHTML = filtered.map(t => {
+    el.innerHTML = pageInfo.items.map(t => {
         const retryableSteps = (t.plan || []).filter(step => step.status === 'error' || step.status === 'blocked');
         return `
         <div class="card" onclick="selectTask('${escapeHtml(t.traceId || '')}')">
@@ -635,6 +704,7 @@ function renderTasks(list = lastTasks) {
         </div>
     `;
     }).join('');
+    renderPagination('taskPagination', pageInfo, 'task');
 }
 
 function selectTask(traceId) {
@@ -700,11 +770,14 @@ function renderJobs(list = lastJobs) {
     lastJobs = list || [];
     const el = document.getElementById('jobs');
     const filtered = lastJobs.filter(jobMatchesFilter);
+    const pageInfo = paginate(filtered, jobPage);
+    jobPage = pageInfo.currentPage;
     if (!filtered.length) {
         el.innerHTML = '<div class="empty">暂无索引任务</div>';
+        renderPagination('jobPagination', pageInfo, 'job');
         return;
     }
-    el.innerHTML = filtered.map(job => {
+    el.innerHTML = pageInfo.items.map(job => {
         const progress = Number(job.progress || 0);
         return `
             <div class="card" onclick="selectJob('${escapeHtml(job.jobId || '')}')">
@@ -725,6 +798,7 @@ function renderJobs(list = lastJobs) {
             </div>
         `;
     }).join('');
+    renderPagination('jobPagination', pageInfo, 'job');
 }
 
 function selectJob(jobId) {

@@ -46,26 +46,13 @@ public class DashScopeAIService implements AIService {
 
             GenerationParam param;
             
-            // 根据模型类型选择合适的参数
-            if ("qwen-max".equals(modelType.getCode())) {
-                // qwen-max 不支持 incremental_output 和 enableThinking 参数
-                param = GenerationParam.builder()
-                        .apiKey(apiKey)
-                        .model(modelType.getCode())
-                        .resultFormat("message")
-                        .messages(Arrays.asList(userMsg))
-                        .build();
-            } else {
-                // 其他模型支持这些参数
-                param = GenerationParam.builder()
-                        .apiKey(apiKey)
-                        .model(modelType.getCode())
-                        .enableThinking(true)
-                        .incrementalOutput(true)
-                        .resultFormat("message")
-                        .messages(Arrays.asList(userMsg))
-                        .build();
-            }
+            // 构建模型调用参数
+            param = GenerationParam.builder()
+                    .apiKey(apiKey)
+                    .model(modelType.getCode())
+                    .resultFormat("message")
+                    .messages(Arrays.asList(userMsg))
+                    .build();
 
             GenerationResult result = gen.call(param);
             

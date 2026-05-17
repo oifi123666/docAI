@@ -11,14 +11,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * RabbitMQ resources for asynchronous AI model jobs.
+ * AI 服务统一 RabbitMQ 配置。
+ * 当前只启用异步模型任务队列；后续 Agent 任务、AIOps 告警也应复用该 TopicExchange。
  */
 @Configuration
 public class AiRabbitMQConfig {
 
     public static final String AI_EXCHANGE = "ai.exchange";
+
     public static final String AI_MODEL_REQUEST_QUEUE = "ai.model.request.queue";
     public static final String AI_MODEL_REQUEST_ROUTING_KEY = "ai.model.request";
+
+    public static final String AI_AGENT_TASK_ROUTING_KEY = "ai.agent.task";
+    public static final String AI_ALERT_ROUTING_KEY = "ai.alert";
 
     @Bean
     public TopicExchange aiExchange() {

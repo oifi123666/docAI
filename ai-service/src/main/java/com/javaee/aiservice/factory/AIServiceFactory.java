@@ -2,6 +2,7 @@ package com.javaee.aiservice.factory;
 
 import com.javaee.aiservice.agent.AIService;
 import com.javaee.aiservice.agent.DashScopeAIService;
+import com.javaee.aiservice.agent.OpenAIAIService;
 import com.javaee.aiservice.config.MultiModelConfig;
 import com.javaee.aiservice.model.ModelType;
 import org.slf4j.Logger;
@@ -26,6 +27,12 @@ public class AIServiceFactory {
     @Value("${spring.ai.dashscope.api-key}")
     private String defaultApiKey;
     
+    @Value("${spring.ai.openai.api-key:#{null}}")
+    private String defaultOpenAiApiKey;
+    
+    @Value("${spring.ai.openai.base-url:#{null}}")
+    private String defaultOpenAiBaseUrl;
+    
     private final Map<ModelType, AIService> serviceMap = new ConcurrentHashMap<>();
     
     @PostConstruct
@@ -33,7 +40,9 @@ public class AIServiceFactory {
         log.info("初始化AI服务工厂...");
         
         for (ModelType modelType : ModelType.values()) {
-            if ("dashscope".equals(modelType.getProvider())) {
+            String provider = modelType.getProvider();
+            
+            if ("dashscope".equals(provider)) {
                 String apiKey = defaultApiKey;
                 boolean enabled = true;
                 
@@ -47,7 +56,31 @@ public class AIServiceFactory {
                 
                 DashScopeAIService service = new DashScopeAIService(apiKey, modelType, enabled);
                 serviceMap.put(modelType, service);
-                log.info("注册模型: {} (enabled: {})", modelType.getName(), enabled);
+                log.info("注册DashScope模型: {} (enabled: {})", modelType.getName(), enabled);
+            } else if ("openai".equals(provider)) {
+                String apiKey = defaultOpenAiApiKey;
+                String baseUrl = defaultOpenAiBaseUrl;
+                boolean enabled = true;
+                
+                if (multiModelConfig.getOpenai().containsKey(modelType.getCode())) {
+                    MultiModelConfig.ModelConfig config = multiModelConfig.getOpenai().get(modelType.getCode());
+                    if (config.getApiKey() != null) {
+                        apiKey = config.getApiKey();
+                    }
+                    if (config.getBaseUrl() != null) {
+                        baseUrl = config.getBaseUrl();
+                    }
+                    enabled = config.isEnabled();
+                }
+                
+                if (apiKey == null || baseUrl == null) {
+                    log.warn("模型 {} 缺少apiKey或baseUrl配置，跳过注册", modelType.getName());
+                    continue;
+                }
+                
+                OpenAIAIService service = new OpenAIAIService(apiKey, baseUrl, modelType, enabled);
+                serviceMap.put(modelType, service);
+                log.info("注册OpenAI兼容模型: {} (enabled: {})", modelType.getName(), enabled);
             }
         }
         
@@ -70,7 +103,7 @@ public class AIServiceFactory {
     }
     
     public AIService getDefaultService() {
-        return getService(ModelType.QWEN_PLUS);
+        return getService(ModelType.QWEN36_PLUS);
     }
     
     public Map<ModelType, AIService> getAllServices() {

@@ -79,7 +79,7 @@ chmod +x deploy.sh
 脚本执行过程中会显示其他节点加入命令，在 Worker 节点上执行：
 
 ```bash
-docker swarm join --token <token> ${DOC_AI_MANAGER_HOST}:2377
+docker swarm join --token <token> <manager-ip>:2377
 ```
 
 ## 四、服务访问
@@ -88,15 +88,15 @@ docker swarm join --token <token> ${DOC_AI_MANAGER_HOST}:2377
 
 | 服务名称 | 访问地址 | 默认账号密码 |
 |--------|--------|-----------|
-| Nacos 控制台 | http://${DOC_AI_MANAGER_HOST}:8848/nacos | ${NACOS_USERNAME}/${NACOS_PASSWORD} |
-| API 网关 | http://${DOC_AI_MANAGER_HOST}:8080 | - |
-| 用户服务 Swagger | http://${DOC_AI_MANAGER_HOST}:8081/swagger-ui.html | - |
-| 文件服务 Swagger | http://${DOC_AI_MANAGER_HOST}:8082/swagger-ui.html | - |
-| AI 服务 Swagger | http://${DOC_AI_MANAGER_HOST}:8083/swagger-ui.html | - |
-| 文档服务 Swagger | http://${DOC_AI_MANAGER_HOST}:8084/swagger-ui.html | - |
-| MinIO 控制台 | http://${DOC_AI_MANAGER_HOST}:9001 | ${MINIO_ACCESS_KEY}/${MINIO_SECRET_KEY} |
-| RabbitMQ 控制台 | http://${DOC_AI_MANAGER_HOST}:15672 | ${RABBITMQ_USERNAME}/${RABBITMQ_PASSWORD} |
-| Grafana 监控 | http://${DOC_AI_MANAGER_HOST}:3000 | admin/${DOC_AI_ADMIN_PASSWORD} |
+| Nacos 控制台 | http://manager-ip:8848/nacos | nacos/nacos |
+| API 网关 | http://manager-ip:8080 | - |
+| 用户服务 Swagger | http://manager-ip:8081/swagger-ui.html | - |
+| 文件服务 Swagger | http://manager-ip:8082/swagger-ui.html | - |
+| AI 服务 Swagger | http://manager-ip:8083/swagger-ui.html | - |
+| 文档服务 Swagger | http://manager-ip:8084/swagger-ui.html | - |
+| MinIO 控制台 | http://manager-ip:9001 | ${MINIO_ROOT_USER}/${MINIO_ROOT_PASSWORD} |
+| RabbitMQ 控制台 | http://manager-ip:15672 | guest/guest |
+| Grafana 监控 | http://manager-ip:3000 | admin/${DOC_AI_ADMIN_PASSWORD} |
 
 ### 4.1 系统测试账号
 
@@ -165,7 +165,7 @@ docker service update --image docai/user-service:1.0.1 docai-services_user-servi
 
 ```bash
 # MySQL 数据备份
-docker exec $(docker ps -qf name=docai-infra_mysql) mysqldump -uroot -p"${MYSQL_PASSWORD}" doc_ai > backup.sql
+docker exec $(docker ps -qf name=docai-infra_mysql) mysqldump -uroot -p123456 doc_ai > backup.sql
 
 # MinIO 数据备份
 docker cp $(docker ps -qf name=docai-infra_minio):/data /path/to/backup

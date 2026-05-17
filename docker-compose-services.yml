@@ -7,7 +7,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.hostname == node1]
+        constraints: [node.hostname == ${DOC_AI_NODE1_HOST}]
       restart_policy:
         condition: on-failure
     environment:
@@ -27,7 +27,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.hostname == manager]
+        constraints: [node.hostname == ${DOC_AI_MANAGER_HOST}]
       restart_policy:
         condition: on-failure
     environment:
@@ -47,7 +47,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.hostname == node2]
+        constraints: [node.hostname == ${DOC_AI_NODE2_HOST}]
       restart_policy:
         condition: on-failure
     environment:
@@ -71,7 +71,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.hostname == node2]
+        constraints: [node.hostname == ${DOC_AI_NODE2_HOST}]
       restart_policy:
         condition: on-failure
     environment:
@@ -97,7 +97,7 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.hostname == node1]
+        constraints: [node.hostname == ${DOC_AI_NODE1_HOST}]
       restart_policy:
         condition: on-failure
     environment:

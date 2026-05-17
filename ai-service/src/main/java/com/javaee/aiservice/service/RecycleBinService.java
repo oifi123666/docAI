@@ -1,5 +1,6 @@
 package com.javaee.aiservice.service;
 
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.vo.RecycleBinVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,9 @@ public class RecycleBinService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
+
     @Value("${minio.bucket:documents}")
     private String defaultBucket;
 
@@ -52,6 +56,7 @@ public class RecycleBinService {
         log.info("将文件移动到回收站: bucket={}, object={}", bucketName, objectName);
 
         try {
+            bucketPermissionService.assertCanAccess(bucketName);
             String recycleId = UUID.randomUUID().toString();
             long deleteTime = System.currentTimeMillis();
             long expiryTime = deleteTime + (long) recycleExpiryDays * 24 * 60 * 60 * 1000;
@@ -112,6 +117,7 @@ public class RecycleBinService {
             if (requester != null && !requester.equals(normalizeDeleter(recycleFile.getDeleter()))) {
                 throw new SecurityException("无权恢复该回收站文件");
             }
+            bucketPermissionService.assertCanAccess(recycleFile.getBucketName());
 
             String targetObjectName = newObjectName != null ? newObjectName : recycleFile.getOriginalObjectName();
             String recycleObjectName = recycleObjectName(recycleId, recycleFile.getOriginalObjectName());
@@ -149,6 +155,9 @@ public class RecycleBinService {
         log.info("获取回收站文件列表: bucket={}", bucketName);
 
         try {
+            if (bucketName != null) {
+                bucketPermissionService.assertCanAccess(bucketName);
+            }
             List<RecycleBinVO.RecycleFile> files = new ArrayList<>();
             long now = System.currentTimeMillis();
 

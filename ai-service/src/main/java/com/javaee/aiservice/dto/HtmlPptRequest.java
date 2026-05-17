@@ -18,7 +18,7 @@ public class HtmlPptRequest {
     @Schema(description = "PPT标题", example = "我的演示文稿")
     private String title;
     
-    @Schema(description = "AI模型（可选，默认qwen-plus），支持：qwen-plus, qwen-max, qwen-turbo, deepseek-v3.2", example = "qwen-plus")
+    @Schema(description = "AI模型（可选，默认qwen3.6-plus），支持：qwen3.6-plus, glm-5, kimi-k2.5, MiniMax-M2.5", example = "qwen3.6-plus")
     private String model;
 
     public String getOutline() {

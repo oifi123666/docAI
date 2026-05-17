@@ -6,13 +6,13 @@ services:
     image: mysql:8.0
     deploy:
       placement:
-        constraints: [node.hostname == manager]
+        constraints: [node.hostname == ${DOC_AI_MANAGER_HOST}]
       replicas: 1
       restart_policy:
         condition: on-failure
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DATABASE: doc_ai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-schema.sql:ro
@@ -44,7 +44,7 @@ services:
     image: rabbitmq:3.8-management
     deploy:
       placement:
-        constraints: [node.hostname == node1]
+        constraints: [node.hostname == ${DOC_AI_NODE1_HOST}]
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -62,7 +62,7 @@ services:
     image: minio/minio
     deploy:
       placement:
-        constraints: [node.hostname == node1]
+        constraints: [node.hostname == ${DOC_AI_NODE1_HOST}]
       replicas: 1
       restart_policy:
         condition: on-failure
@@ -80,10 +80,10 @@ services:
 
   # Nacos
   nacos:
-    image: ${NACOS_USERNAME}/${NACOS_PASSWORD}-server:v2.2.0
+    image: nacos/nacos-server:v2.2.0
     deploy:
       placement:
-        constraints: [node.hostname == node3]
+        constraints: [node.hostname == ${DOC_AI_NODE3_HOST}]
       replicas: 1
       restart_policy:
         condition: on-failure

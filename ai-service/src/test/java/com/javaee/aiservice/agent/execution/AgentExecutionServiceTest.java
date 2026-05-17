@@ -36,12 +36,16 @@ class AgentExecutionServiceTest {
         AgentToolRegistry registry = new AgentToolRegistry();
 
         AgentToolDefinition deleteTool = registry.get("file-delete");
+        AgentToolDefinition restoreTool = registry.get("file-restore");
 
         assertThat(deleteTool).isNotNull();
         assertThat(deleteTool.isDestructive()).isTrue();
         assertThat(deleteTool.getRiskLevel()).isEqualTo("high");
         assertThat(deleteTool.getParameterSchema().get("objectName").isRequired()).isTrue();
         assertThat(deleteTool.getParameterSchema().get("requireConfirmation").getType()).isEqualTo("boolean");
+        assertThat(restoreTool).isNotNull();
+        assertThat(restoreTool.isDestructive()).isTrue();
+        assertThat(registry.get("file-upload")).isNull();
     }
 
     @Test
@@ -266,12 +270,14 @@ class AgentExecutionServiceTest {
         Map<String, Object> snap2 = new HashMap<>();
         snap2.put("status", "running");
         snap2.put("userId", "bob");
+        snap2.put("pendingApproval", Map.of("agentApprovalToken", "tok-pending"));
         registry.save("trace-2", snap2);
 
         assertThat(registry.get("trace-1")).containsEntry("userId", "alice");
         assertThat(registry.listByUser("alice")).hasSize(1);
         assertThat(registry.listByUser("bob")).hasSize(1);
         assertThat(registry.listAll()).hasSize(2);
+        assertThat(registry.findByApprovalToken("tok-pending")).containsEntry("userId", "bob");
 
         // 终态任务无法取消
         assertThat(registry.cancel("trace-1")).isFalse();

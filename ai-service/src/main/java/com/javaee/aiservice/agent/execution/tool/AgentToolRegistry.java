@@ -41,8 +41,6 @@ public class AgentToolRegistry {
         register("text-correct", "对文本进行纠错、润色或改写。",
                 Map.of("content", "待处理文本", "instruction", "纠错/润色/改写要求", "model", "可选模型代码"),
                 Set.of("content"), false, "text", false);
-        register("file-upload", "上传文件。该工具需要 MultipartFile，只能通过现有上传接口完成。",
-                Map.of("bucketName", "存储桶名称，可选", "objectName", "对象名称，可选"), Set.of(), false, "file", true);
         register("file-download-url", "生成文件预签名下载地址。",
                 Map.of("bucketName", "存储桶名称，可选", "objectName", "对象名称，必填"),
                 Set.of("objectName"), false, "file", false);
@@ -52,7 +50,7 @@ public class AgentToolRegistry {
                 Set.of("objectName"), true, "file", false);
         register("file-restore", "从回收站恢复文件。",
                 Map.of("recycleId", "回收站记录ID", "bucketName", "存储桶名称，可选", "newObjectName", "新对象名称，可选"),
-                Set.of("recycleId"), false, "file", false);
+                Set.of("recycleId"), true, "file", false);
         register("recycle-list", "查看回收站文件列表。",
                 Map.of("bucketName", "存储桶名称，可选"), Set.of(), false, "file", false);
         register("file-version-list", "查看文件版本列表。",

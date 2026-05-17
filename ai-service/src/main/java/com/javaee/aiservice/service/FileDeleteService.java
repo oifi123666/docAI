@@ -2,6 +2,7 @@ package com.javaee.aiservice.service;
 
 import com.javaee.aiservice.dto.FileDeleteDTO;
 import com.javaee.aiservice.dto.FileRestoreDTO;
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.vo.FileDeleteVO;
 import com.javaee.aiservice.vo.FileRestoreVO;
@@ -32,9 +33,6 @@ public class FileDeleteService {
     private static final String DELETE_CONFIRM_PREFIX = "file:delete:confirm:";
 
     @Autowired
-    private MinIOService minIOService;
-
-    @Autowired
     private RecycleBinService recycleBinService;
 
     @Autowired
@@ -42,6 +40,9 @@ public class FileDeleteService {
 
     @Autowired
     private RequestUserContext requestUserContext;
+
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
 
     @Value("${minio.bucket:documents}")
     private String defaultBucket;
@@ -77,6 +78,7 @@ public class FileDeleteService {
         try {
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
             String objectName = dto.getObjectName();
+            bucketPermissionService.assertCanAccess(bucketName);
 
             if (objectName == null || objectName.trim().isEmpty()) {
                 throw new IllegalArgumentException("对象名称不能为空");
@@ -154,6 +156,7 @@ public class FileDeleteService {
             throw new IllegalStateException("确认token已过期，请重新请求删除");
         }
 
+        bucketPermissionService.assertCanAccess(request.bucketName);
         return deleteWithRecycle(request.bucketName, request.objectName, request.deleter);
     }
 
@@ -188,6 +191,7 @@ public class FileDeleteService {
                 dto.getRecycleId(), dto.getNewObjectName(), requestUserContext.getRequiredUserId());
 
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
 
             FileRestoreVO vo = new FileRestoreVO();
             vo.setStatus("restored");

@@ -92,7 +92,7 @@ public class PromptEngineeringService {
             输出格式为JSON数组，包含以下字段：
             - step: 步骤编号
             - description: 步骤描述
-            - skill: 需要的技能（如：file-upload, file-delete, file-download）
+            - skill: 需要的技能（如：file-delete, file-download；文件上传必须由用户通过上传页面或接口自行完成）
             - params: 预估参数（可选）
             """;
 

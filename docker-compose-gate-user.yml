@@ -7,7 +7,7 @@ services:
       mode: replicated
       replicas: 2
       placement:
-        constraints: [node.role == worker]
+        constraints: [node.hostname == ${DOC_AI_NODE1_HOST}]
       restart_policy:
         condition: on-failure
     environment:
@@ -26,13 +26,13 @@ services:
       mode: replicated
       replicas: 1
       placement:
-        constraints: [node.hostname == manager]
+        constraints: [node.hostname == ${DOC_AI_MANAGER_HOST}]
       restart_policy:
         condition: on-failure
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_REDIS_PASSWORD: your_redis_password
     networks:
       - docai-network
     ports:

@@ -73,6 +73,10 @@ minio:
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
   bucket-name: doc-ai
+  # bucket=permissionGroup1,permissionGroup2; another-bucket=groupA
+  # JWT 中的 role 会作为默认权限组；可额外通过 permissionGroups/groups claim 扩展。
+  bucket-permissions: "doc-ai=admin,user"
+  bucket-permission-default-allow: false
   secure: false
 
 file:

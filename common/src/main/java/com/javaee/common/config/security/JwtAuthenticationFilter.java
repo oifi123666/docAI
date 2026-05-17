@@ -9,12 +9,11 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * JWT认证过滤器
@@ -38,12 +37,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     // 解析令牌获取用户信息
                     Claims claims = JwtUtils.parseToken(token);
                     Long userId = claims.get("userId", Long.class);
-                    String username = claims.get("username", String.class);
                     String role = claims.get("role", String.class);
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                    addGroupAuthorities(authorities, claims.get("permissionGroups"));
+                    addGroupAuthorities(authorities, claims.get("groups"));
                     
                     // 创建认证令牌
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            userId, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+                            userId, null, authorities
                     );
                     
                     // 设置认证详情
@@ -60,5 +62,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         
         // 继续过滤链
         chain.doFilter(request, response);
+    }
+
+    private void addGroupAuthorities(List<SimpleGrantedAuthority> authorities, Object groupsClaim) {
+        if (groupsClaim instanceof Collection<?> groups) {
+            for (Object group : groups) {
+                addGroupAuthority(authorities, group);
+            }
+            return;
+        }
+        if (groupsClaim instanceof String groups) {
+            for (String group : groups.split("[,;]")) {
+                addGroupAuthority(authorities, group);
+            }
+        }
+    }
+
+    private void addGroupAuthority(List<SimpleGrantedAuthority> authorities, Object rawGroup) {
+        if (rawGroup == null) {
+            return;
+        }
+        String group = rawGroup.toString().trim();
+        if (group.isEmpty()) {
+            return;
+        }
+        String authority = group.startsWith("GROUP_") ? group : "GROUP_" + group;
+        authorities.add(new SimpleGrantedAuthority(authority));
     }
 }

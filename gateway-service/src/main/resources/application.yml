@@ -29,16 +29,16 @@ spring:
 
   data:
     redis:
-      host: infra_redis
+      host: ${REDIS_HOST:infra_redis}
       port: 6379
-      password: docai@2024
+      password: ${REDIS_PASSWORD}
       database: 0
 
   rabbitmq:
-    host: infra_rabbitmq
+    host: ${RABBITMQ_HOST:infra_rabbitmq}
     port: 5672
-    username: guest
-    password: guest
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
     virtual-host: /
     listener:
       simple:

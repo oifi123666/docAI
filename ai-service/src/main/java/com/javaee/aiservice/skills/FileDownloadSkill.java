@@ -1,5 +1,6 @@
 package com.javaee.aiservice.skills;
 
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.service.MinIOService;
 
 import java.io.InputStream;
@@ -7,9 +8,11 @@ import java.io.InputStream;
 public class FileDownloadSkill implements Skill {
 
     private final MinIOService minIOService;
+    private final BucketPermissionService bucketPermissionService;
 
-    public FileDownloadSkill(MinIOService minIOService) {
+    public FileDownloadSkill(MinIOService minIOService, BucketPermissionService bucketPermissionService) {
         this.minIOService = minIOService;
+        this.bucketPermissionService = bucketPermissionService;
     }
 
     @Override
@@ -49,6 +52,7 @@ public class FileDownloadSkill implements Skill {
                 bucketName = "doc-ai";
                 System.out.println(bucketMessage);
             }
+            bucketPermissionService.assertCanAccess(bucketName);
 
             // 获取文件元数据
             System.out.println("从桶 " + bucketName + " 获取文件元数据...");

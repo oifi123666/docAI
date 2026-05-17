@@ -178,8 +178,8 @@ spring:
 | REDIS_PASSWORD | Redis 密码 | - |
 | RABBITMQ_HOST | RabbitMQ 主机地址 | localhost |
 | RABBITMQ_PORT | RabbitMQ 端口 | 5672 |
-| RABBITMQ_USERNAME | RabbitMQ 用户名 | ${RABBITMQ_USERNAME} |
-| RABBITMQ_PASSWORD | RabbitMQ 密码 | ${RABBITMQ_PASSWORD} |
+| RABBITMQ_USERNAME | RabbitMQ 用户名 | guest |
+| RABBITMQ_PASSWORD | RabbitMQ 密码 | guest |
 
 ## 部署说明
 
@@ -210,7 +210,7 @@ docker build -t ai-service:1.0.0 .
 docker run --name ai-service -d \
   --network docai-network \
   -p 8083:8083 \
-  -e OPENAI_API_KEY=${OPENAI_API_KEY} \
+  -e OPENAI_API_KEY=your_api_key \
   -e REDIS_HOST=redis \
   ai-service:1.0.0
 ```

@@ -1,10 +1,10 @@
 package com.javaee.aiservice.model;
 
 public enum ModelType {
-    QWEN_PLUS("qwen-plus", "通义千问Plus", "dashscope"),
-    QWEN_MAX("qwen-max", "通义千问Max", "dashscope"),
-    QWEN_TURBO("qwen-turbo", "通义千问Turbo", "dashscope"),
-    DEEPSEEK_V3("deepseek-v3.2", "DeepSeek V3.2", "dashscope");
+    QWEN36_PLUS("qwen3.6-plus", "通义千问3.6 Plus", "openai"),
+    GLM5("glm-5", "智谱GLM-5", "openai"),
+    KIMI_K25("kimi-k2.5", "月之暗面K2.5", "openai"),
+    MINIMAX_M25("MiniMax-M2.5", "MiniMax M2.5", "openai");
 
     private final String code;
     private final String name;
@@ -34,6 +34,6 @@ public enum ModelType {
                 return type;
             }
         }
-        return QWEN_PLUS;
+        return QWEN36_PLUS;
     }
 }

@@ -2,6 +2,7 @@ package com.javaee.aiservice.service;
 
 import com.javaee.aiservice.dto.FileVersionDTO;
 import com.javaee.aiservice.dto.FileVersionSwitchDTO;
+import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.vo.FileVersionVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,9 @@ public class FileVersionService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    @Autowired
+    private BucketPermissionService bucketPermissionService;
+
     @Value("${minio.bucket:documents}")
     private String defaultBucket;
 
@@ -51,6 +55,7 @@ public class FileVersionService {
 
         try {
             String actualBucket = bucketName != null ? bucketName : defaultBucket;
+            bucketPermissionService.assertCanAccess(actualBucket);
             String key = versionKey(actualBucket, objectName);
             String versionId = UUID.randomUUID().toString();
             long createTime = System.currentTimeMillis();
@@ -99,6 +104,7 @@ public class FileVersionService {
 
         try {
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
             String objectName = dto.getObjectName();
             String key = versionKey(bucketName, objectName);
 
@@ -139,6 +145,7 @@ public class FileVersionService {
 
         try {
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
             String objectName = dto.getObjectName();
             String key = versionKey(bucketName, objectName);
             String targetVersionId = dto.getTargetVersionId();
@@ -190,6 +197,7 @@ public class FileVersionService {
 
         try {
             String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            bucketPermissionService.assertCanAccess(bucketName);
             String objectName = dto.getObjectName();
             String versionId = dto.getVersionId();
             String key = versionKey(bucketName, objectName);
