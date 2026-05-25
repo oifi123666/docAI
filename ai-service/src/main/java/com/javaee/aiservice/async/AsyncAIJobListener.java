@@ -2,6 +2,8 @@ package com.javaee.aiservice.async;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaee.aiservice.agent.ChatService;
+import com.javaee.aiservice.agent.execution.AgentExecutionService;
+import com.javaee.aiservice.agent.execution.model.AgentExecutionRequest;
 import com.javaee.aiservice.config.AiRabbitMQConfig;
 import com.javaee.aiservice.dto.AsyncChatDTO;
 import com.javaee.aiservice.dto.KeywordExtractDTO;
@@ -12,7 +14,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Consumes queued model jobs and writes results back to Redis.
@@ -32,6 +40,9 @@ public class AsyncAIJobListener {
 
     @Autowired
     private ChatService chatService;
+
+    @Autowired
+    private AgentExecutionService agentExecutionService;
 
     @RabbitListener(queues = AiRabbitMQConfig.AI_MODEL_REQUEST_QUEUE)
     public void handleModelJob(AsyncAIJobMessage message) {
@@ -64,6 +75,7 @@ public class AsyncAIJobListener {
                     objectMapper.convertValue(message.getPayload(), TextAnalyzeDTO.class)
             );
             case "chat" -> executeChat(message);
+            case "agent" -> executeAgent(message);
             default -> throw new IllegalArgumentException("不支持的异步AI任务类型: " + type);
         };
     }
@@ -74,5 +86,29 @@ public class AsyncAIJobListener {
             throw new IllegalArgumentException("prompt不能为空");
         }
         return chatService.callChatApiWithModelCode(dto.getPrompt(), message.getModel());
+    }
+
+    private Object executeAgent(AsyncAIJobMessage message) {
+        AgentExecutionRequest request = objectMapper.convertValue(message.getPayload(), AgentExecutionRequest.class);
+        request.setUserId(message.getUserId());
+        if (message.getModel() != null && !message.getModel().isBlank()) {
+            request.setModel(message.getModel());
+        }
+        SecurityContext previousContext = SecurityContextHolder.getContext();
+        SecurityContext jobContext = SecurityContextHolder.createEmptyContext();
+        jobContext.setAuthentication(new UsernamePasswordAuthenticationToken(
+                message.getUserId(),
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_user"))
+        ));
+        SecurityContextHolder.setContext(jobContext);
+        try {
+            return agentExecutionService.execute(request);
+        } finally {
+            SecurityContextHolder.clearContext();
+            if (previousContext != null && previousContext.getAuthentication() != null) {
+                SecurityContextHolder.setContext(previousContext);
+            }
+        }
     }
 }

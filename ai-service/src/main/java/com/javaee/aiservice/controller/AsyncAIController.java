@@ -2,6 +2,7 @@ package com.javaee.aiservice.controller;
 
 import com.javaee.aiservice.async.AsyncAIJobService;
 import com.javaee.aiservice.async.AsyncAIJobVO;
+import com.javaee.aiservice.agent.execution.model.AgentExecutionRequest;
 import com.javaee.aiservice.dto.AsyncChatDTO;
 import com.javaee.aiservice.dto.KeywordExtractDTO;
 import com.javaee.aiservice.dto.TextAnalyzeDTO;
@@ -76,6 +77,14 @@ public class AsyncAIController {
                             defaultValue = "qwen3.6-plus"))
             @RequestParam(required = false) String model) {
         return Result.success(asyncAIJobService.submit("chat", dto, model, requestUserContext.getRequiredUserId()));
+    }
+
+    @PostMapping("/agent/execute")
+    @Operation(summary = "异步Agent任务", description = "提交统一Agent任务到RabbitMQ，立即返回jobId")
+    public Result<AsyncAIJobVO> submitAgent(@RequestBody AgentExecutionRequest request) {
+        String userId = requestUserContext.getRequiredUserId();
+        request.setUserId(userId);
+        return Result.success(asyncAIJobService.submit("agent", request, request.getModel(), userId));
     }
 
     @GetMapping("/jobs/{jobId}")
