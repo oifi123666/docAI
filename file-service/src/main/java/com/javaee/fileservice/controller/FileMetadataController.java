@@ -90,7 +90,7 @@ public class FileMetadataController {
     /**
      * 获取文件名
      */
-    @GetMapping("/info/{fileId}/name")
+    @GetMapping("/metadata/{fileId}/name")
     @Operation(summary = "获取文件名", description = "根据文件ID获取文件名")
     public ResponseEntity<?> getFileName(@Parameter(description = "文件ID") @PathVariable String fileId) {
         try {
@@ -107,7 +107,7 @@ public class FileMetadataController {
     /**
      * 获取文件类型
      */
-    @GetMapping("/info/{fileId}/type")
+    @GetMapping("/metadata/{fileId}/type")
     @Operation(summary = "获取文件类型", description = "根据文件ID获取文件类型")
     public ResponseEntity<?> getFileType(@Parameter(description = "文件ID") @PathVariable String fileId) {
         try {

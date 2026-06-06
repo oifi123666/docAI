@@ -110,8 +110,13 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         message.put("userId", userId);
         message.put("timestamp", LocalDateTime.now().toString());
         
-        log.info("发送网关日志消息到 RabbitMQ");
-        rabbitMQUtil.send(RabbitMQConfig.GATEWAY_EXCHANGE, RabbitMQConfig.GATEWAY_LOG_ROUTING_KEY, message);
+        try {
+            log.info("发送网关日志消息到 RabbitMQ");
+            rabbitMQUtil.send(RabbitMQConfig.GATEWAY_EXCHANGE, RabbitMQConfig.GATEWAY_LOG_ROUTING_KEY, message);
+        } catch (Exception e) {
+            log.warn("网关日志消息发送 RabbitMQ 失败，不影响当前请求: path={}, method={}, error={}",
+                    path, method, e.getMessage(), e);
+        }
     }
 
     /**
@@ -123,8 +128,13 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         message.put("description", description);
         message.put("timestamp", LocalDateTime.now().toString());
         
-        log.info("发送网关告警消息到 RabbitMQ");
-        rabbitMQUtil.send(RabbitMQConfig.GATEWAY_EXCHANGE, RabbitMQConfig.GATEWAY_ALERT_ROUTING_KEY, message);
+        try {
+            log.info("发送网关告警消息到 RabbitMQ");
+            rabbitMQUtil.send(RabbitMQConfig.GATEWAY_EXCHANGE, RabbitMQConfig.GATEWAY_ALERT_ROUTING_KEY, message);
+        } catch (Exception e) {
+            log.warn("网关告警消息发送 RabbitMQ 失败，不影响当前请求: alertType={}, error={}",
+                    alertType, e.getMessage(), e);
+        }
     }
 
     @Override

@@ -13,6 +13,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
+    command: --max-connections=500
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql-schema.sql:/docker-entrypoint-initdb.d/01-nacos-schema.sql:ro

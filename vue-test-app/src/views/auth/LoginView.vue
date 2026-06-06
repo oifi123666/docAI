@@ -37,10 +37,27 @@ const handleLogin = async () => {
   loading.value = true
   try {
     const res = await userApi.login(form.value)
+    const loginData = res.data || {}
+    const accessToken = loginData.accessToken || loginData.token
+    const refreshToken = loginData.refreshToken
+    const user = loginData.user || {}
+
+    if (!accessToken) {
+      throw new Error('登录成功但后端未返回 accessToken')
+    }
 
     // 保存 Token
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, res.data.accessToken)
-    localStorage.setItem('userId', res.data.user.id)
+    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken)
+    if (refreshToken) {
+      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken)
+    }
+    if (user.id) {
+      localStorage.setItem('userId', user.id)
+    }
+    localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(user))
+    if (user.username) {
+      localStorage.setItem('userName', user.username)
+    }
 
     ElMessage.success('登录成功！')
     router.push('/dashboard')

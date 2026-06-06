@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS `document` (
   `keywords` TEXT COMMENT '关键词（JSON格式）',
   `file_id` VARCHAR(64) COMMENT '关联文件ID',
   `user_id` BIGINT COMMENT '创建用户ID',
+  `bucket_name` VARCHAR(128) COMMENT '文档内容所在MinIO桶',
+  `object_name` VARCHAR(512) COMMENT '文档内容在MinIO中的对象名',
   `status` VARCHAR(20) DEFAULT 'active' COMMENT '状态：active-活跃，deleted-已删除',
   `version` INT DEFAULT 1 COMMENT '版本号',
   `category` VARCHAR(50) COMMENT '分类',
@@ -15,9 +17,29 @@ CREATE TABLE IF NOT EXISTS `document` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_bucket_name` (`bucket_name`),
   INDEX `idx_status` (`status`),
   INDEX `idx_category` (`category`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档表';
+
+-- 已有数据库升级参考：
+-- ALTER TABLE `document` ADD COLUMN `bucket_name` VARCHAR(128) COMMENT '文档内容所在MinIO桶';
+-- ALTER TABLE `document` ADD COLUMN `object_name` VARCHAR(512) COMMENT '文档内容在MinIO中的对象名';
+-- ALTER TABLE `document` ADD INDEX `idx_bucket_name` (`bucket_name`);
+
+-- 创建文档协作访问表
+CREATE TABLE IF NOT EXISTS `document_access` (
+  `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '访问记录ID',
+  `document_id` VARCHAR(64) NOT NULL COMMENT '文档ID',
+  `bucket_name` VARCHAR(128) NOT NULL COMMENT '文档所在MinIO桶',
+  `user_id` BIGINT NOT NULL COMMENT '可访问用户ID',
+  `role` VARCHAR(20) NOT NULL DEFAULT 'editor' COMMENT '角色：owner/editor/viewer',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_document_user` (`document_id`, `user_id`),
+  INDEX `idx_user_bucket` (`user_id`, `bucket_name`),
+  INDEX `idx_bucket_name` (`bucket_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文档协作访问表';
 
 -- 创建文档版本表
 CREATE TABLE IF NOT EXISTS `document_version` (

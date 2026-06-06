@@ -15,6 +15,12 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 1
+      idle-timeout: 30000
+      max-lifetime: 300000
+      connection-timeout: 10000
 
   cloud:
     compatibility-verifier:
@@ -124,10 +130,10 @@ minio:
   endpoint: ${MINIO_ENDPOINT:http://infra_minio:9000}
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
-  bucket: documents
+  bucket: doc-ai
   # bucket=permissionGroup1,permissionGroup2; another-bucket=groupA
   # JWT 中的 role 会作为默认权限组；可额外通过 permissionGroups/groups claim 扩展。
-  bucket-permissions: "documents=admin,user"
+  bucket-permissions: "documents=admin,user;doc-ai=admin,user"
   bucket-permission-default-allow: false
   url:
     expiry: 3600
@@ -135,6 +141,11 @@ minio:
     expiry-days: 7
   delete:
     confirmation-timeout: 300
+
+# 文档服务配置
+document:
+  service:
+    url: http://document:8084
 
 # 日志配置
 logging:

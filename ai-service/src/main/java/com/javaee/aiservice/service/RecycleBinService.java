@@ -38,9 +38,6 @@ public class RecycleBinService {
     @Autowired
     private BucketPermissionService bucketPermissionService;
 
-    @Value("${minio.bucket:documents}")
-    private String defaultBucket;
-
     @Value("${minio.recycle.expiry-days:7}")
     private int recycleExpiryDays;
 
@@ -53,10 +50,20 @@ public class RecycleBinService {
      * @return 回收站记录ID
      */
     public String moveToRecycleBin(String bucketName, String objectName, String deleter) {
+        return moveToRecycleBin(bucketName, objectName, deleter, true);
+    }
+
+    public String moveDocumentToRecycleBin(String bucketName, String objectName, String deleter) {
+        return moveToRecycleBin(bucketName, objectName, deleter, false);
+    }
+
+    private String moveToRecycleBin(String bucketName, String objectName, String deleter, boolean checkBucketPermission) {
         log.info("将文件移动到回收站: bucket={}, object={}", bucketName, objectName);
 
         try {
-            bucketPermissionService.assertCanAccess(bucketName);
+            if (checkBucketPermission) {
+                bucketPermissionService.assertCanAccess(bucketName);
+            }
             String recycleId = UUID.randomUUID().toString();
             long deleteTime = System.currentTimeMillis();
             long expiryTime = deleteTime + (long) recycleExpiryDays * 24 * 60 * 60 * 1000;

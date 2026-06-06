@@ -29,6 +29,10 @@ public class Document {
 
     private Long userId;
 
+    private String bucketName;
+
+    private String objectName;
+
     private String status;
 
     private Integer version;

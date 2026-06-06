@@ -2,6 +2,8 @@ package com.javaee.fileservice.controller;
 
 import com.javaee.common.model.Result;
 import com.javaee.fileservice.config.RabbitMQConfig;
+import com.javaee.fileservice.entity.FileMetadata;
+import com.javaee.fileservice.service.FileMetadataService;
 import com.javaee.fileservice.service.FileService;
 import com.javaee.fileservice.util.RabbitMQUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 文件核心接口控制器
@@ -31,6 +34,9 @@ public class FileController {
 
     @Autowired
     private FileService fileService;
+
+    @Autowired
+    private FileMetadataService fileMetadataService;
 
     @Autowired
     private RabbitMQUtil rabbitMQUtil;
@@ -56,8 +62,13 @@ public class FileController {
             message.put("userId", userId);
             message.put("timestamp", LocalDateTime.now().toString());
             
-            log.info("发送文件上传消息到 RabbitMQ");
-            rabbitMQUtil.send(RabbitMQConfig.FILE_EXCHANGE, RabbitMQConfig.FILE_UPLOAD_ROUTING_KEY, message);
+            try {
+                log.info("发送文件上传消息到 RabbitMQ");
+                rabbitMQUtil.send(RabbitMQConfig.FILE_EXCHANGE, RabbitMQConfig.FILE_UPLOAD_ROUTING_KEY, message);
+            } catch (Exception mqException) {
+                log.warn("文件已保存，但上传事件发送 RabbitMQ 失败: fileId={}, error={}",
+                        fileId, mqException.getMessage(), mqException);
+            }
             
             return Result.success(Map.of("fileId", fileId, "message", "文件上传成功"));
         } catch (Exception e) {
@@ -138,8 +149,13 @@ public class FileController {
             message.put("userId", userId);
             message.put("timestamp", LocalDateTime.now().toString());
             
-            log.info("发送文件下载消息到 RabbitMQ");
-            rabbitMQUtil.send(RabbitMQConfig.FILE_EXCHANGE, RabbitMQConfig.FILE_DOWNLOAD_ROUTING_KEY, message);
+            try {
+                log.info("发送文件下载消息到 RabbitMQ");
+                rabbitMQUtil.send(RabbitMQConfig.FILE_EXCHANGE, RabbitMQConfig.FILE_DOWNLOAD_ROUTING_KEY, message);
+            } catch (Exception mqException) {
+                log.warn("文件下载成功，但下载事件发送 RabbitMQ 失败: fileId={}, error={}",
+                        fileId, mqException.getMessage(), mqException);
+            }
             
             return ResponseEntity.ok()
                     .headers(headers)
@@ -171,6 +187,42 @@ public class FileController {
     }
 
     /**
+     * 获取文件原始名称，供文档服务解析时使用。
+     */
+    @GetMapping("/info/{fileId}/name")
+    @Operation(summary = "获取文件名", description = "根据文件ID获取原始文件名")
+    public ResponseEntity<String> getFileName(@Parameter(description = "文件ID") @PathVariable String fileId) {
+        try {
+            String fileName = Optional.ofNullable(fileMetadataService.getMetadata(fileId))
+                    .map(metadata -> metadata.getOriginalFileName() != null
+                            ? metadata.getOriginalFileName()
+                            : metadata.getFileName())
+                    .orElse(fileId);
+            return ResponseEntity.ok(fileName);
+        } catch (Exception e) {
+            log.warn("获取文件名失败，返回 fileId 作为降级值: fileId={}, error={}", fileId, e.getMessage(), e);
+            return ResponseEntity.ok(fileId);
+        }
+    }
+
+    /**
+     * 获取文件类型，供文档服务解析时使用。
+     */
+    @GetMapping("/info/{fileId}/type")
+    @Operation(summary = "获取文件类型", description = "根据文件ID获取文件Content-Type")
+    public ResponseEntity<String> getFileType(@Parameter(description = "文件ID") @PathVariable String fileId) {
+        try {
+            String fileType = Optional.ofNullable(fileMetadataService.getMetadata(fileId))
+                    .map(FileMetadata::getFileType)
+                    .orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+            return ResponseEntity.ok(fileType);
+        } catch (Exception e) {
+            log.warn("获取文件类型失败，返回默认类型: fileId={}, error={}", fileId, e.getMessage(), e);
+            return ResponseEntity.ok(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        }
+    }
+
+    /**
      * 文件删除
      */
     @DeleteMapping("/{fileId}")
@@ -185,8 +237,13 @@ public class FileController {
             message.put("userId", userId);
             message.put("timestamp", LocalDateTime.now().toString());
             
-            log.info("发送文件删除消息到 RabbitMQ");
-            rabbitMQUtil.send(RabbitMQConfig.FILE_EXCHANGE, RabbitMQConfig.FILE_DELETE_ROUTING_KEY, message);
+            try {
+                log.info("发送文件删除消息到 RabbitMQ");
+                rabbitMQUtil.send(RabbitMQConfig.FILE_EXCHANGE, RabbitMQConfig.FILE_DELETE_ROUTING_KEY, message);
+            } catch (Exception mqException) {
+                log.warn("文件删除成功，但删除事件发送 RabbitMQ 失败: fileId={}, error={}",
+                        fileId, mqException.getMessage(), mqException);
+            }
             
             return ResponseEntity.ok(Map.of("message", "文件删除成功"));
         } catch (Exception e) {

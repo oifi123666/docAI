@@ -7,8 +7,7 @@
         <div class="aside-top">
           <div class="brand">
             <div class="logo-box"><el-icon><Cpu /></el-icon></div>
-            <span class="brand-text">DocAI 妙搭</span>
-          </div>
+            <span class="brand-text">DocAI 妙搭</span></div>
           <div class="nav-menu">
             <div class="nav-item active"><el-icon><Monitor /></el-icon> 我的工作台</div>
             <div class="nav-item"><el-icon><FolderOpened /></el-icon> 云端文档库</div>
@@ -89,7 +88,7 @@
             <!-- 快捷胶囊按钮 -->
             <div class="quick-prompts">
               <div class="prompt-pill" @click="triggerUpload"><el-icon><Upload /></el-icon> 上传文档</div>
-              <div class="prompt-pill" @click="mockSkill('搭建工作台')"><el-icon><DataAnalysis /></el-icon> 搭建仪表盘</div>
+              <div class="prompt-pill" @click="pptDialogVisible = true"><el-icon><Monitor /></el-icon> 一键生成 PPT</div>
               <div class="prompt-pill" @click="mockSkill('对话')"><el-icon><ChatLineSquare /></el-icon> 开启对话</div>
             </div>
           </div>
@@ -155,7 +154,63 @@
         </div>
       </el-main>
     </el-container>
+
+    <!-- PPT 生成器弹窗 -->
+    <el-dialog v-model="pptDialogVisible" title="🎨 HTML PPT 生成器" width="600px" destroy-on-close>
+      <el-form :model="pptForm" label-position="top">
+        <el-alert :title="`即将使用 [${currentModelName}] 为您生成内容`" type="info" show-icon :closable="false" style="margin-bottom: 15px;" />
+        <el-form-item label="📌 演示标题">
+          <el-input v-model="pptForm.title" placeholder="例如：2026年DocAI项目" />
+        </el-form-item>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="🎨 视觉主题">
+              <el-select v-model="pptForm.theme" style="width: 100%">
+                <el-option label="Tokyo Night（深色）" value="tokyo-night" />
+                <el-option label="Dracula（深色）" value="dracula" />
+                <el-option label="Catppuccin Mocha（深色）" value="catppuccin-mocha" />
+                <el-option label="Nord（深色）" value="nord" />
+                <el-option label="Corporate Clean（商务）" value="corporate-clean" />
+                <el-option label="Minimal White（极简白）" value="minimal-white" />
+                <el-option label="Cyberpunk Neon（赛博）" value="cyberpunk-neon" />
+                <el-option label="Aurora（极光）" value="aurora" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+
+          <el-col :span="12">
+            <el-form-item label="🧠 驱动大模型">
+              <el-select v-model="pptForm.model" style="width: 100%" placeholder="加载中..." :loading="modelsLoading">
+                <el-option
+                    v-for="m in aiModelsList"
+                    :key="m.code"
+                    :label="m.name"
+                    :value="m.code"
+                    :disabled="!m.available"
+                >
+                  <span style="float: left">{{ m.name }}</span>
+                  <span style="float: right; color: #8492a6; font-size: 12px">{{ m.provider }}</span>
+                </el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="📝 大纲（每行一个章节）">
+          <el-input v-model="pptForm.outline" type="textarea" :rows="5" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="handlePptAction('preview')" :loading="pptLoading">👀 浏览器预览</el-button>
+          <el-button type="primary" @click="handlePptAction('download')" :loading="pptLoading">💾 下载</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
   </div>
+
 </template>
 
 <script setup>
@@ -165,6 +220,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { fileApi } from '../../api/file'
 import { userApi } from '../../api/user'
 import { docApi } from '../../api/document'
+import { aiApi } from '../../api/ai'
 import { STORAGE_KEYS } from '../../constants'
 import { isAdmin } from '../../utils/jwt'
 
@@ -175,11 +231,30 @@ const docList = ref([])
 const search = ref('')
 const aiTask = ref('')
 const fileInputRef = ref(null)
+const modelsLoading = ref(false)
+const aiModelsList = ref([])
+const pptDialogVisible = ref(false)
+const pptLoading = ref(false)
+const pptForm = ref({
+  title: 'DocAI 项目',
+  theme: 'tokyo-night',
+  outline: '项目背景与痛点\n核心微服务架构\nRAG 知识检索增强\n未来商业展望',
+  model: 'qwen3.6-plus'
+})
+
 const isAdminUser = ref(isAdmin())
+
+const getCurrentUserId = () => localStorage.getItem('userId')
+
+// 计算当前选中的模型名字（用于弹窗提示）
+const currentModelName = computed(() => {
+  const model = aiModelsList.value.find(m => m.code === pptForm.value.model)
+  return model ? model.name : pptForm.value.model
+})
 
 // 获取用户信息
 const fetchUser = async () => {
-  const uid = localStorage.getItem('userId')
+  const uid = getCurrentUserId()
   if (uid) {
     try {
       const res = await userApi.getUserInfo(uid)
@@ -190,10 +265,14 @@ const fetchUser = async () => {
 
 // 获取文档列表 (从 8084 获取)
 const fetchFiles = async () => {
+  const uid = getCurrentUserId()
+  if (!uid) {
+    router.push('/login')
+    return
+  }
   loading.value = true
   try {
-    // 暂时查 1 号用户的文件
-    const res = await docApi.getUserDocs(1)
+    const res = await docApi.getUserDocs(uid)
     if (res.data && Array.isArray(res.data)) {
       docList.value = res.data.map(item => ({
         id: item.id,
@@ -209,7 +288,28 @@ const fetchFiles = async () => {
   } finally { loading.value = false }
 }
 
-onMounted(() => { fetchUser(); fetchFiles(); })
+// 获取 AI 模型列表
+const fetchModels = async () => {
+  modelsLoading.value = true
+  try {
+    const res = await aiApi.getModels().catch(() => null)
+    if (res && res.data && res.data.length > 0) {
+      aiModelsList.value = res.data
+      const firstAvailable = res.data.find(m => m.available)
+      if (firstAvailable) pptForm.value.model = firstAvailable.code
+    } else {
+      // 容灾假数据
+      aiModelsList.value = [
+        { code: 'qwen-plus', name: '通义千问 Plus (Mock)', available: true, provider: '阿里云' },
+        { code: 'deepseek-v3.2', name: 'DeepSeek (Mock)', available: true, provider: 'DeepSeek' }
+      ]
+    }
+  } finally {
+    modelsLoading.value = false
+  }
+}
+
+onMounted(() => { fetchUser(); fetchFiles(); fetchModels() })
 
 const filteredList = computed(() => docList.value.filter(d => d.name.toLowerCase().includes(search.value.toLowerCase())))
 
@@ -242,7 +342,6 @@ const handleSearch = async () => {
 }
 
 
-
 // 飞书化上传交互
 const triggerUpload = () => fileInputRef.value?.click()
 
@@ -254,28 +353,28 @@ const onFileSelected = async (event) => {
   try {
     // 先传文件仓库
     const fileRes = await fileApi.upload(rawFile)
-    const fileId = fileRes.data.fileId || fileRes.data.id
-
-    // 如果是 TXT，前端提取文字发给后端解析
-    let content = ''
-    if (rawFile.name.endsWith('.txt') || rawFile.name.endsWith('.md')) {
-      content = await rawFile.text()
+    const fileId = fileRes?.data?.fileId || fileRes?.data?.id
+    if (!fileId) {
+      throw new Error('文件上传成功但没有返回 fileId')
     }
 
     // 在文档服务注册
     await docApi.createDoc({
       title: rawFile.name,
       fileId: fileId,
-      content: content,
       category: 'default'
     })
 
     ElMessage.success(`《${rawFile.name}》已成功存入云端！`)
-    fetchFiles()
+    await fetchFiles()
     event.target.value = ''
   } catch (e) {
+    console.error('上传链路异常', e)
     ElMessage.error('上传链路异常')
-  } finally { loading.value = false }
+  } finally {
+    event.target.value = ''
+    loading.value = false
+  }
 }
 
 // 卡片逻辑(删除下载)
@@ -332,11 +431,72 @@ const clearDirtyData = () => {
   })
 }
 
+// ppt生成逻辑
+const handlePptAction = async (actionType) => {
+  pptLoading.value = true
+  try {
+    // 获取原始 HTML (根据类型选择接口)
+    let rawHtml = ""
+    if (actionType === 'download') {
+      const blob = await aiApi.downloadPpt(pptForm.value)
+      rawHtml = await blob.text()
+    } else {
+      const result = await aiApi.previewPpt(pptForm.value)
+      rawHtml = typeof result === 'string' ? result : result.data
+    }
+
+    if (!rawHtml || rawHtml.length < 10) throw new Error('生成内容为空')
+
+    rawHtml = rawHtml.replace(/<li>\s*(?:[-*•○]|o\s+|O\s+|\d+[.、)）])\s*/g, '<li>')
+    //  **加粗** 符号，也可以顺手清理掉
+    rawHtml = rawHtml.replace(/\*\*/g, '')
+
+    // 统一净化与增强
+    const cdn = "https://cdn.jsdelivr.net/npm/reveal.js@5.0.4"
+    let processedHtml = rawHtml
+        .replace(/dist\/reveal\.css/g, `${cdn}/dist/reveal.css`)
+        .replace(/dist\/reveal\.js/g, `${cdn}/dist/reveal.js`)
+        .replace(/plugin\/notes\/notes\.js/g, `${cdn}/plugin/notes/notes.js`)
+        .replace(/dist\/theme\/[a-z-]+\.css/g, (m) => `${cdn}/${m}`)
+        .replace(/history:\s*true/g, 'history: false')
+
+    // 注入安全补丁
+    const injection = `
+    <script>
+      if (window.top !== window.self && !window.location.search.includes('preview')) { window.stop(); }
+    <\/script>`
+    processedHtml = processedHtml.replace('</head>', `${injection}</head>`)
+
+    // 执行最终动作
+    if (actionType === 'download') {
+      const blob = new Blob([processedHtml], { type: 'text/html' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `${pptForm.value.title || '演示文稿'}.html`)
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      ElMessage.success('PPT 已导出')
+    } else {
+      sessionStorage.setItem('temp_ppt_render_source', processedHtml)
+      window.open('/ppt-runtime', '_blank')
+    }
+
+  } catch (e) {
+    console.error('PPT 处理失败:', e)
+    ElMessage.error('生成失败，请重试')
+  } finally {
+    pptLoading.value = false
+  }
+}
+
+
 // 跳转编辑器
 const goToEditor = (id, name) => {
   sessionStorage.setItem('currentDocName', name)
   router.push(`/editor/${id}`)
 }
+
 
 const handleAiTask = () => {
   if (!aiTask.value.trim()) return

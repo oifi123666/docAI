@@ -20,7 +20,9 @@ function getEditorInfo() {
 
 async function fetchUserName(userId) {
   try {
-    const res = await fetch(`/api/users/${userId}`)
+    const token = localStorage.getItem('accessToken') || ''
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const res = await fetch(`/api/users/${userId}`, { headers })
     const data = await res.json()
     if (data.code === 200 && data.data && data.data.username) {
       localStorage.setItem('userName', data.data.username)

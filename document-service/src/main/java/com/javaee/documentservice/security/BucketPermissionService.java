@@ -1,6 +1,8 @@
 package com.javaee.documentservice.security;
 
+import com.javaee.common.utils.UserBucketUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,6 +33,9 @@ public class BucketPermissionService {
         if (bucketName == null || bucketName.isBlank()) {
             throw new SecurityException("存储桶名称不能为空");
         }
+        if (isCurrentUserBucket(bucketName)) {
+            return;
+        }
         if (isAllowed(bucketName, currentPermissionGroups())) {
             return;
         }
@@ -52,6 +57,17 @@ public class BucketPermissionService {
 
     private boolean isAdmin() {
         return currentPermissionGroups().contains("admin");
+    }
+
+    private boolean isCurrentUserBucket(String bucketName) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken
+                || authentication.getPrincipal() == null) {
+            return false;
+        }
+        return UserBucketUtils.isUserBucket(bucketName, authentication.getPrincipal());
     }
 
     private Set<String> currentPermissionGroups() {

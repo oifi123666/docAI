@@ -2,6 +2,7 @@ package com.javaee.aiservice.skills;
 
 import com.javaee.aiservice.agent.ChatService;
 import com.javaee.aiservice.security.BucketPermissionService;
+import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.service.MinIOService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -16,10 +17,11 @@ public class SkillRegistry {
 
     @Autowired
     public SkillRegistry(MinIOService minIOService, ChatService chatService,
-                         BucketPermissionService bucketPermissionService) {
+                         BucketPermissionService bucketPermissionService,
+                         RequestUserContext requestUserContext) {
         // 注册技能
-        registerSkill(new FileUploadSkill(minIOService, bucketPermissionService));
-        registerSkill(new FileDownloadSkill(minIOService, bucketPermissionService));
+        registerSkill(new FileUploadSkill(minIOService, bucketPermissionService, requestUserContext));
+        registerSkill(new FileDownloadSkill(minIOService, bucketPermissionService, requestUserContext));
         registerSkill(new HtmlPptSkill(chatService));
     }
 

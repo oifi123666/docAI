@@ -33,6 +33,9 @@ export const aiApi = {
         return request.get('/ai/agent/tools')
     },
 
+
+    getModels: () => request.get('/ai/models'),
+
     // 开启一个带有记忆的新对话 (返回 conversationId)
     startChat: (userId) => {
         return request.post(`/ai/agent/chat/start?userId=${userId}`)
@@ -68,6 +71,16 @@ export const aiApi = {
 
     getAsyncJob,
 
+
+    // 获取分段策略列表
+    getSegmentStrategies: () => request.get('/ai/rag/segment/strategies'),
+    // 带有分段策略的文档索引
+    indexWithSegment: (documentId, content, strategy) => request.post(`/ai/rag/index/segment?documentId=${documentId}&strategy=${strategy}`, content, { headers: { 'Content-Type': 'text/plain' } }),
+    // 获取已分段的列表
+    getDocumentSegments: (documentId) => request.get(`/ai/rag/document/${documentId}/segments`),
+    // 获取统计信息
+    getRagStatistics: () => request.get('/ai/rag/statistics'),
+
     /**
      * RAG 问答
      * 基于知识库直接搜索并回答，不带历史记忆，追求极致准确
@@ -77,5 +90,11 @@ export const aiApi = {
         return request.post('/ai/rag/query?strategy=HYBRID', question, {
             headers: { 'Content-Type': 'text/plain' }
         })
-    }
+    },
+
+// ================= PPT 生成 Skill 接口 =================
+    // 下载 PPT
+    downloadPpt: (data) => request.post('/skills/html-ppt/download', data, { responseType: 'blob' }),
+    // 预览 PPT (返回 HTML 字符串)
+    previewPpt: (data) => request.post('/skills/html-ppt/view', data)
 }

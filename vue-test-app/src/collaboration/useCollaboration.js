@@ -49,7 +49,7 @@ export function useCollaboration(documentId, userId, userName) {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify({ title: '', content, category: 'default' })
+        body: JSON.stringify({ content })
       })
       lastSavedContent = content
       lastSyncTime.value = Date.now()
@@ -74,7 +74,7 @@ export function useCollaboration(documentId, userId, userName) {
       const docData = data.data || data
       const remoteContent = docData.content || ''
 
-      if (remoteContent && remoteContent !== lastKnownContent) {
+      if (remoteContent !== lastKnownContent) {
         const localContent = paperElement ? paperElement.innerHTML : ''
         if (remoteContent !== localContent) {
           isRemoteChange = true

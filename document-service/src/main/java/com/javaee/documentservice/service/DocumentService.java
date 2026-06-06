@@ -39,11 +39,21 @@ public interface DocumentService {
     void delete(String id, Long userId);
 
     /**
+     * 授权用户协作访问文档。
+     */
+    void grantAccess(String id, Long collaboratorUserId, String role, Long operatorUserId);
+
+    /**
      * 根据ID获取文档详情
      * @param id 文档ID
      * @return 文档VO
      */
-    DocumentVO getById(String id);
+    DocumentVO getById(String id, Long userId);
+
+    /**
+     * 获取文档在MinIO中的存储位置。
+     */
+    DocumentVO getStorageLocation(String id, Long userId);
 
     /**
      * 获取用户的文档列表
@@ -57,14 +67,14 @@ public interface DocumentService {
      * @param dto 查询参数（支持关键词、分类）
      * @return 文档VO列表
      */
-    List<DocumentVO> search(DocumentQueryDTO dto);
+    List<DocumentVO> search(DocumentQueryDTO dto, Long userId);
 
     /**
      * 获取文档的所有版本
      * @param documentId 文档ID
      * @return 文档版本列表
      */
-    List<DocumentVersion> getVersions(String documentId);
+    List<DocumentVersion> getVersions(String documentId, Long userId);
 
     /**
      * 恢复文档到指定版本

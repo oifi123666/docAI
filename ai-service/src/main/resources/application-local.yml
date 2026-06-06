@@ -18,6 +18,12 @@ spring:
     username: ${MYSQL_LOCAL_USERNAME:root}
     password: ${MYSQL_LOCAL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 0
+      idle-timeout: 30000
+      max-lifetime: 300000
+      connection-timeout: 10000
 
   cloud:
     compatibility-verifier:
@@ -124,8 +130,8 @@ minio:
   endpoint: ${MINIO_LOCAL_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
-  bucket: documents
-  bucket-permissions: "documents=admin,user"
+  bucket: doc-ai
+  bucket-permissions: "documents=admin,user;doc-ai=admin,user"
   bucket-permission-default-allow: false
   url:
     expiry: 3600
@@ -133,6 +139,11 @@ minio:
     expiry-days: 7
   delete:
     confirmation-timeout: 300
+
+# 文档服务配置
+document:
+  service:
+    url: http://localhost:8084
 
 # 日志配置
 logging:

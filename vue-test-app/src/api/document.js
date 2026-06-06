@@ -44,5 +44,11 @@ export const docApi = {
     // 删除文档
     deleteDoc: (id) => {
         return request.delete(`/documents/${id}`)
+    },
+
+    grantCollaborator: (id, collaboratorUserId, role = 'editor') => {
+        return request.post(`/documents/${id}/collaborators/${collaboratorUserId}`, null, {
+            params: { role }
+        })
     }
 }

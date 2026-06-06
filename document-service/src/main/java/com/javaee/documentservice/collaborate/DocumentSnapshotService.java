@@ -1,5 +1,8 @@
 package com.javaee.documentservice.collaborate;
 
+import com.javaee.common.utils.UserBucketUtils;
+import com.javaee.documentservice.entity.Document;
+import com.javaee.documentservice.mapper.DocumentMapper;
 import com.javaee.documentservice.service.DocumentContentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +23,9 @@ public class DocumentSnapshotService {
     private DocumentContentService documentContentService;
 
     @Autowired
+    private DocumentMapper documentMapper;
+
+    @Autowired
     private EditOperationHandler editOperationHandler;
 
     @Async
@@ -32,7 +38,7 @@ public class DocumentSnapshotService {
 
     public void createSnapshot(String documentId, String content) {
         try {
-            documentContentService.updateContent(documentId, content);
+            documentContentService.updateContent(documentId, bucketNameFor(documentId), content);
             log.info("文档快照已创建: documentId={}, contentLength={}", documentId,
                     content != null ? content.length() : 0);
         } catch (Exception e) {
@@ -41,7 +47,7 @@ public class DocumentSnapshotService {
     }
 
     public String rebuildContent(String documentId) {
-        String snapshotContent = documentContentService.getContent(documentId);
+        String snapshotContent = documentContentService.getContent(documentId, bucketNameFor(documentId));
         if (snapshotContent == null) {
             snapshotContent = "";
         }
@@ -54,6 +60,17 @@ public class DocumentSnapshotService {
         }
 
         return content.toString();
+    }
+
+    private String bucketNameFor(String documentId) {
+        Document document = documentMapper.selectById(documentId);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在: " + documentId);
+        }
+        if (document.getBucketName() != null && !document.getBucketName().isBlank()) {
+            return document.getBucketName();
+        }
+        return UserBucketUtils.bucketNameForUser(document.getUserId());
     }
 
     private void applyOperation(StringBuilder content, EditOperation op) {

@@ -55,6 +55,26 @@
       <div class="no-collab" v-else-if="isConnected">
         <span>点击"加入协作"开始实时同步</span>
       </div>
+      <div class="share-box">
+        <div class="share-title">授权协作者</div>
+        <div class="share-row">
+          <el-input
+            v-model="collaboratorQuery"
+            size="small"
+            clearable
+            placeholder="输入用户名或用户ID"
+            @keyup.enter="handleGrant"
+          />
+          <el-select v-model="collaboratorRole" size="small" style="width: 96px;">
+            <el-option label="可编辑" value="editor" />
+            <el-option label="只读" value="viewer" />
+          </el-select>
+          <el-button type="primary" size="small" :loading="granting" @click="handleGrant">
+            授权
+          </el-button>
+        </div>
+        <div class="share-hint">授权后，对方会在自己的文档列表中看到这份文档；文档仍保存在创建者的存储桶中。</div>
+      </div>
       <div class="connection-error" v-if="connectionError">
         <el-icon><WarningFilled /></el-icon>
         <span>{{ connectionError }}</span>
@@ -65,6 +85,9 @@
 
 <script setup>
 import { ref, computed, onUnmounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { docApi } from '../api/document'
+import { userApi } from '../api/user'
 import { useCollaboration } from './useCollaboration'
 
 const props = defineProps({
@@ -76,6 +99,9 @@ const props = defineProps({
 const visible = ref(true)
 const collapsed = ref(false)
 const isConnecting = ref(false)
+const collaboratorQuery = ref('')
+const collaboratorRole = ref('editor')
+const granting = ref(false)
 
 const {
   isConnected,
@@ -119,22 +145,52 @@ function handleStop() {
   stopCollaboration()
 }
 
+async function handleGrant() {
+  const query = collaboratorQuery.value.trim()
+  if (!query) {
+    ElMessage.warning('请输入协作者用户名或用户ID')
+    return
+  }
+
+  granting.value = true
+  try {
+    let collaboratorUserId = query
+    if (!/^\d+$/.test(query)) {
+      const userRes = await userApi.getUserByUsername(query)
+      collaboratorUserId = userRes?.data?.id
+    }
+
+    if (!collaboratorUserId) {
+      ElMessage.error('没有找到该用户')
+      return
+    }
+    if (String(collaboratorUserId) === String(props.userId)) {
+      ElMessage.warning('不能把文档授权给自己')
+      return
+    }
+
+    await docApi.grantCollaborator(props.documentId, collaboratorUserId, collaboratorRole.value)
+    ElMessage.success('协作者授权成功')
+    collaboratorQuery.value = ''
+  } catch (e) {
+    ElMessage.error(e?.message || '协作者授权失败')
+  } finally {
+    granting.value = false
+  }
+}
+
 onUnmounted(() => {
   stopCollaboration()
 })
 </script>
 
 <style scoped>
+/* 去掉 fixed 悬浮，改为 100% 宽度的内嵌卡片 */
 .collaborate-panel {
-  position: fixed;
-  bottom: 24px;
-  left: 24px;
-  z-index: 9998;
-  width: 280px;
+  width: 100%;
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  border: 1px solid #e1eaff; /* 和侧边栏的边框颜色统一 */
   overflow: hidden;
   transition: all 0.3s;
 }
@@ -143,7 +199,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 14px 16px;
   cursor: pointer;
   user-select: none;
   background: #fafbfc;
@@ -183,12 +239,13 @@ onUnmounted(() => {
 
 .panel-body {
   padding: 12px 16px;
+  background: #fff;
 }
 
 .sync-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .info-row {
@@ -197,7 +254,6 @@ onUnmounted(() => {
   gap: 8px;
   font-size: 13px;
   color: #646a73;
-  padding: 4px 0;
 }
 
 .info-row .el-icon {
@@ -219,5 +275,34 @@ onUnmounted(() => {
   color: #f56c6c;
   font-size: 12px;
   padding: 8px 0;
+  background: #fef0f0;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.share-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.share-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2329;
+  margin-bottom: 8px;
+}
+
+.share-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.share-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8f959e;
 }
 </style>

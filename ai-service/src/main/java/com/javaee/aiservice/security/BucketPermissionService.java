@@ -1,5 +1,6 @@
 package com.javaee.aiservice.security;
 
+import com.javaee.common.utils.UserBucketUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +35,9 @@ public class BucketPermissionService {
         if (bucketName == null || bucketName.isBlank()) {
             throw new SecurityException("存储桶名称不能为空");
         }
+        if (isCurrentUserBucket(bucketName)) {
+            return;
+        }
         if (isAllowed(bucketName, requestUserContext.getCurrentPermissionGroups())) {
             return;
         }
@@ -51,6 +55,12 @@ public class BucketPermissionService {
         Set<String> normalizedUserGroups = normalizeGroups(userGroups);
         return normalizedUserGroups.contains("*") || allowedGroups.contains("*")
                 || allowedGroups.stream().anyMatch(normalizedUserGroups::contains);
+    }
+
+    private boolean isCurrentUserBucket(String bucketName) {
+        return requestUserContext.getCurrentUserId()
+                .map(userId -> UserBucketUtils.isUserBucket(bucketName, userId))
+                .orElse(false);
     }
 
     private Set<String> parseGroups(String groups) {

@@ -3,11 +3,12 @@ package com.javaee.aiservice.service;
 import com.javaee.aiservice.dto.FileVersionDTO;
 import com.javaee.aiservice.dto.FileVersionSwitchDTO;
 import com.javaee.aiservice.security.BucketPermissionService;
+import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.vo.FileVersionVO;
+import com.javaee.common.utils.UserBucketUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -37,8 +38,8 @@ public class FileVersionService {
     @Autowired
     private BucketPermissionService bucketPermissionService;
 
-    @Value("${minio.bucket:documents}")
-    private String defaultBucket;
+    @Autowired
+    private RequestUserContext requestUserContext;
 
     /**
      * 创建新的文件版本
@@ -54,7 +55,7 @@ public class FileVersionService {
         log.info("创建文件版本: bucket={}, object={}", bucketName, objectName);
 
         try {
-            String actualBucket = bucketName != null ? bucketName : defaultBucket;
+            String actualBucket = resolveBucketName(bucketName);
             bucketPermissionService.assertCanAccess(actualBucket);
             String key = versionKey(actualBucket, objectName);
             String versionId = UUID.randomUUID().toString();
@@ -103,7 +104,7 @@ public class FileVersionService {
         log.info("获取文件版本列表: bucket={}, object={}", dto.getBucketName(), dto.getObjectName());
 
         try {
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
             String objectName = dto.getObjectName();
             String key = versionKey(bucketName, objectName);
@@ -144,7 +145,7 @@ public class FileVersionService {
             dto.getBucketName(), dto.getObjectName(), dto.getTargetVersionId());
 
         try {
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
             String objectName = dto.getObjectName();
             String key = versionKey(bucketName, objectName);
@@ -196,7 +197,7 @@ public class FileVersionService {
             dto.getBucketName(), dto.getObjectName(), dto.getVersionId());
 
         try {
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
             String objectName = dto.getObjectName();
             String versionId = dto.getVersionId();
@@ -241,5 +242,12 @@ public class FileVersionService {
     private String versionObjectName(String objectName, String versionId) {
         String safeObjectName = objectName == null ? "unknown" : objectName.replaceAll("^/+", "");
         return VERSION_OBJECT_PREFIX + safeObjectName + "/" + versionId;
+    }
+
+    private String resolveBucketName(String requestedBucketName) {
+        if (requestedBucketName != null && !requestedBucketName.isBlank()) {
+            return requestedBucketName;
+        }
+        return UserBucketUtils.bucketNameForUser(requestUserContext.getRequiredUserId());
     }
 }

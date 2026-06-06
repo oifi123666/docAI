@@ -44,10 +44,11 @@ public class AgentToolRegistry {
         register("file-download-url", "生成文件预签名下载地址。",
                 Map.of("bucketName", "存储桶名称，可选", "objectName", "对象名称，必填"),
                 Set.of("objectName"), false, "file", false);
-        register("file-delete", "删除文件，默认需要确认并进入回收站。",
-                Map.of("bucketName", "存储桶名称，可选", "objectName", "对象名称，必填",
-                        "requireConfirmation", "是否需要确认", "confirmationToken", "确认token"),
-                Set.of("objectName"), true, "file", false);
+        register("file-delete", "永久删除指定文件，不进入回收站。可传前端documentId，由服务端删除对应业务文档；也兼容直接传objectName永久删除MinIO对象。",
+                Map.of("bucketName", "存储桶名称，可选",
+                        "objectName", "对象名称，与documentId二选一",
+                        "documentId", "前端业务文档ID，与objectName二选一"),
+                Set.of(), false, "file", false);
         register("file-restore", "从回收站恢复文件。",
                 Map.of("recycleId", "回收站记录ID", "bucketName", "存储桶名称，可选", "newObjectName", "新对象名称，可选"),
                 Set.of("recycleId"), true, "file", false);
@@ -62,6 +63,28 @@ public class AgentToolRegistry {
         register("html-ppt-generate", "根据大纲生成 HTML PPT。",
                 Map.of("outline", "PPT大纲", "theme", "主题，默认tokyo-night", "title", "标题", "model", "可选模型代码"),
                 Set.of("outline"), false, "generation", false);
+        register("document-read", "读取业务文档当前内容。用于在扩写、改写、润色前获取原文档。",
+                Map.of("documentId", "业务文档ID，必填"),
+                Set.of("documentId"), false, "document", false);
+        register("document-write", "将AI生成的文本内容返回给前端，由当前编辑器直接写入页面文档；不在服务端保存文件或刷新MinIO对象。",
+                Map.of("documentId", "业务文档ID，可选，用于前端校验当前文档",
+                        "content", "要写回文档的完整文本内容，必填",
+                        "writeMode", "写入模式: append(追加,默认) / overwrite(覆盖) / replace-selection(替换选中内容) / insert(插入)",
+                        "changeLog", "本次前端增量修改说明，默认由Agent生成",
+                        "selectionText", "前端当前选中的文本，可选",
+                        "insertAfterText", "从当前文档中复制的一小段锚点文本，前端会把内容插入到该段后面，可选",
+                        "contentFormat", "内容格式: plain_text(默认) / html"),
+                Set.of("content"), false, "document", false);
+        register("text-to-file", "兼容旧的写文件工具名：将AI生成文本返回给前端编辑器待写入，不直接调用MinIO。",
+                Map.of("content", "要写入的文本内容，必填",
+                        "objectName", "旧流程的文件对象名称，可选，仅用于兼容展示",
+                        "bucketName", "旧流程的存储桶名称，可选，仅用于兼容展示",
+                        "contentType", "内容类型，默认text/plain",
+                        "writeMode", "写入模式: append(追加,默认) / overwrite(覆盖) / replace-selection(替换选中内容) / insert(插入)",
+                        "changeLog", "本次前端增量修改说明，默认由Agent生成",
+                        "insertAfterText", "从当前文档中复制的一小段锚点文本，前端会把内容插入到该段后面，可选",
+                        "selectionText", "前端当前选中的文本，可选"),
+                Set.of("content"), false, "file", false);
     }
 
     public AgentToolDefinition get(String name) {
@@ -100,6 +123,7 @@ public class AgentToolRegistry {
     private List<Object> allowedValues(String parameterName) {
         return switch (parameterName) {
             case "strategy" -> List.of("HYBRID", "VECTOR", "BM25");
+            case "writeMode" -> List.of("overwrite", "append", "insert", "replace-selection");
             default -> null;
         };
     }
@@ -129,7 +153,7 @@ public class AgentToolRegistry {
         if (Set.of("topK", "count", "maxLength").contains(parameterName)) {
             return "integer";
         }
-        if (Set.of("requireConfirmation").contains(parameterName)) {
+        if (Set.of("requireConfirmation", "reindexAfterWrite").contains(parameterName)) {
             return "boolean";
         }
         return "string";
@@ -142,6 +166,9 @@ public class AgentToolRegistry {
             case "maxLength" -> 300;
             case "strategy" -> "HYBRID";
             case "requireConfirmation" -> true;
+            case "writeMode" -> "append";
+            case "contentType" -> "text/plain";
+            case "reindexAfterWrite" -> true;
             default -> null;
         };
     }

@@ -6,6 +6,31 @@
         SELECT * FROM document WHERE user_id = #{userId} AND status = 'active' ORDER BY create_time DESC
     </select>
 
+    <select id="selectAccessibleByUserId" resultType="com.javaee.documentservice.entity.Document">
+        SELECT DISTINCT d.*
+        FROM document d
+        LEFT JOIN document_access da ON da.document_id = d.id AND da.user_id = #{userId}
+        WHERE d.status = 'active'
+          AND (d.user_id = #{userId} OR da.user_id IS NOT NULL)
+        ORDER BY d.create_time DESC
+    </select>
+
+    <select id="searchAccessible" resultType="com.javaee.documentservice.entity.Document">
+        SELECT DISTINCT d.*
+        FROM document d
+        LEFT JOIN document_access da ON da.document_id = d.id AND da.user_id = #{userId}
+        WHERE d.status = 'active'
+          AND (d.user_id = #{userId} OR da.user_id IS NOT NULL)
+        <if test="keyword != null and keyword != ''">
+          AND (d.title LIKE CONCAT('%', #{keyword}, '%')
+               OR d.keywords LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="(keyword == null or keyword == '') and category != null and category != ''">
+          AND d.category = #{category}
+        </if>
+        ORDER BY d.create_time DESC
+    </select>
+
     <select id="selectByCategory" resultType="com.javaee.documentservice.entity.Document">
         SELECT * FROM document WHERE category = #{category} AND status = 'active' ORDER BY create_time DESC
     </select>

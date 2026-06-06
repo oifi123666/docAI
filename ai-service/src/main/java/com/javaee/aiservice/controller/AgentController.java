@@ -133,10 +133,44 @@ public class AgentController {
     }
 
     /**
+     * 任务运行 - 删除任务快照。
+     */
+    @DeleteMapping("/tasks/{traceId}")
+    @Operation(summary = "删除Agent任务", description = "从注册表中彻底删除任务快照")
+    public Result<Boolean> deleteTask(@PathVariable String traceId) {
+        Map<String, Object> snapshot = agentTaskRegistry.get(traceId);
+        if (snapshot != null && !snapshot.isEmpty()
+                && !requestUserContext.isAdmin()
+                && !requestUserContext.getRequiredUserId().equals(String.valueOf(snapshot.getOrDefault("userId", "")))) {
+            throw new SecurityException("无权删除该任务");
+        }
+        return Result.success(agentTaskRegistry.delete(traceId));
+    }
+
+    /**
+     * 任务运行 - 续接 action_required 任务。
+     */
+    @PostMapping("/tasks/{traceId}/continue")
+    @Operation(summary = "续接Agent任务", description = "对处于 action_required 状态的任务补充信息后继续执行")
+    public Result<Map<String, Object>> continueTask(
+            @PathVariable String traceId,
+            @RequestBody AgentExecutionRequest request) {
+        Map<String, Object> snapshot = agentTaskRegistry.get(traceId);
+        if (snapshot != null && !snapshot.isEmpty()
+                && !requestUserContext.isAdmin()
+                && !requestUserContext.getRequiredUserId().equals(String.valueOf(snapshot.getOrDefault("userId", "")))) {
+            throw new SecurityException("无权续接该任务");
+        }
+        request.setContinueTraceId(traceId);
+        request.setUserId(requestUserContext.getRequiredUserId());
+        return Result.success(agentExecutionService.execute(request));
+    }
+
+    /**
      * 任务运行 - 单步重试。
      */
     @PostMapping("/tasks/{traceId}/steps/{stepId}/retry")
-    @Operation(summary = "重试Agent任务的指定步骤", description = "在原任务上下文上对指定步骤重新执行工具，可携带 overrideParams 修正参数")
+    @Operation(summary = "单步重试Agent任务", description = "对已结束任务的单个失败步骤进行针对性重试")
     public Result<Map<String, Object>> retryStep(
             @PathVariable String traceId,
             @PathVariable String stepId,

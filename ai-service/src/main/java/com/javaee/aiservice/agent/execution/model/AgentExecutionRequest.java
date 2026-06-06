@@ -21,6 +21,8 @@ public class AgentExecutionRequest {
     private Boolean reflectionEnabled;
     private Boolean returnIntermediateSteps = true;
     private Map<String, Object> context = new HashMap<>();
+    private String continueTraceId;
+    private String approvalToken;
 
     public String getTask() {
         return task;
@@ -124,5 +126,21 @@ public class AgentExecutionRequest {
 
     public void setContext(Map<String, Object> context) {
         this.context = context != null ? context : new HashMap<>();
+    }
+
+    public String getContinueTraceId() {
+        return continueTraceId;
+    }
+
+    public void setContinueTraceId(String continueTraceId) {
+        this.continueTraceId = continueTraceId;
+    }
+
+    public String getApprovalToken() {
+        return approvalToken;
+    }
+
+    public void setApprovalToken(String approvalToken) {
+        this.approvalToken = approvalToken;
     }
 }

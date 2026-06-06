@@ -12,5 +12,11 @@ export const userApi = {
     // 获取用户信息
     getUserInfo: (id) => {
         return request.get(`/users/${id}`)
+    },
+
+    getUserByUsername: (username) => {
+        return request.get('/users/lookup', {
+            params: { username }
+        })
     }
 }

@@ -1,15 +1,16 @@
 package com.javaee.aiservice.service;
 
+import com.javaee.aiservice.client.DocumentServiceClient;
 import com.javaee.aiservice.dto.FileDeleteDTO;
 import com.javaee.aiservice.dto.FileRestoreDTO;
 import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.vo.FileDeleteVO;
 import com.javaee.aiservice.vo.FileRestoreVO;
+import com.javaee.common.utils.UserBucketUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Service;
@@ -21,11 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * 文件删除服务
- * 功能说明：使用MCP实现文件删除功能，支持确认删除和回收站
- * 实现方式：使用skill方式实现，等待MCP集成
- */
 @Service
 public class FileDeleteService {
 
@@ -36,6 +32,9 @@ public class FileDeleteService {
     private RecycleBinService recycleBinService;
 
     @Autowired
+    private MinIOService minIOService;
+
+    @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired
@@ -44,81 +43,72 @@ public class FileDeleteService {
     @Autowired
     private BucketPermissionService bucketPermissionService;
 
-    @Value("${minio.bucket:documents}")
-    private String defaultBucket;
+    @Autowired
+    private DocumentServiceClient documentServiceClient;
 
-    @Value("${minio.delete.confirmation-timeout:300}")
+    @org.springframework.beans.factory.annotation.Value("${minio.delete.confirmation-timeout:300}")
     private int confirmationTimeout;
 
-    /**
-     * 删除请求
-     */
     public static class DeleteRequest implements Serializable {
         private static final long serialVersionUID = 1L;
+        String documentId;
         String bucketName;
         String objectName;
         String deleter;
+        boolean documentScoped;
         long createTime;
         long expiryTime;
     }
 
-    /**
-     * 删除文件（使用MCP）
-     * 功能说明：删除文件，支持确认删除和回收站
-     * 实现方式：使用skill方式实现，通过MCP进行权限验证
-     * 
-     * @param dto 删除参数
-     * @param deleter 删除者
-     * @return 删除结果
-     */
+    private record DeleteTarget(String documentId, String bucketName, String objectName, boolean documentScoped) {
+    }
+
     public FileDeleteVO deleteFile(FileDeleteDTO dto, String deleter) {
-        log.info("开始删除文件: bucket={}, object={}, deleter={}", 
-            dto.getBucketName(), dto.getObjectName(), deleter);
+        log.info("Start deleting file: documentId={}, bucket={}, object={}, deleter={}",
+                dto.getDocumentId(), dto.getBucketName(), dto.getObjectName(), deleter);
 
         try {
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
-            String objectName = dto.getObjectName();
-            bucketPermissionService.assertCanAccess(bucketName);
-
-            if (objectName == null || objectName.trim().isEmpty()) {
-                throw new IllegalArgumentException("对象名称不能为空");
-            }
-
             if (dto.getConfirmationToken() != null) {
                 return confirmDelete(dto);
             }
 
+            DeleteTarget target = resolveDeleteTarget(dto);
+            if (!target.documentScoped()) {
+                bucketPermissionService.assertCanAccess(target.bucketName());
+            }
+
             if (Boolean.TRUE.equals(dto.getRequireConfirmation())) {
-                return requestConfirmation(bucketName, objectName, deleter);
+                return requestConfirmation(target, deleter);
             }
 
             if (deleter == null || !deleter.startsWith("agent-approved:")) {
-                log.warn("拒绝未确认的直接删除请求: bucket={}, object={}, deleter={}", bucketName, objectName, deleter);
-                return requestConfirmation(bucketName, objectName, deleter);
+                log.warn("Refuse direct delete without confirmation: documentId={}, bucket={}, object={}, deleter={}",
+                        target.documentId(), target.bucketName(), target.objectName(), deleter);
+                return requestConfirmation(target, deleter);
             }
 
-            return deleteWithRecycle(bucketName, objectName, deleter);
+            return deleteDirectly(target, deleter);
 
         } catch (Exception e) {
-            log.error("删除文件失败", e);
+            log.error("Delete file failed", e);
             throw new RuntimeException("删除文件失败: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * 请求确认删除
-     */
-    private FileDeleteVO requestConfirmation(String bucketName, String objectName, String deleter) {
-        log.info("请求确认删除: bucket={}, object={}", bucketName, objectName);
+    private FileDeleteVO requestConfirmation(DeleteTarget target, String deleter) {
+        log.info("Request delete confirmation: documentId={}, bucket={}, object={}",
+                target.documentId(), target.bucketName(), target.objectName());
 
         String confirmationToken = UUID.randomUUID().toString();
         long createTime = System.currentTimeMillis();
         long expiryTime = createTime + (long) confirmationTimeout * 1000;
 
         DeleteRequest request = new DeleteRequest();
-        request.bucketName = bucketName;
-        request.objectName = objectName;
+        request.documentId = target.documentId();
+        request.bucketName = target.bucketName();
+        request.objectName = target.objectName();
         request.deleter = deleter;
+        request.documentScoped = target.documentScoped();
         request.createTime = createTime;
         request.expiryTime = expiryTime;
 
@@ -129,17 +119,14 @@ public class FileDeleteService {
         vo.setStatus("pending");
         vo.setConfirmationToken(confirmationToken);
         vo.setConfirmationExpiry(expiryTime);
-        vo.setMessage("请确认删除操作，token在" + confirmationTimeout + "秒内有效");
+        vo.setMessage("请确认永久删除操作，token在" + confirmationTimeout + "秒内有效");
 
-        log.info("删除确认请求已发送: token={}", confirmationToken);
+        log.info("Delete confirmation request created: token={}", confirmationToken);
         return vo;
     }
 
-    /**
-     * 确认删除
-     */
-    private FileDeleteVO confirmDelete(FileDeleteDTO dto) {
-        log.info("确认删除: token={}", dto.getConfirmationToken());
+    private FileDeleteVO confirmDelete(FileDeleteDTO dto) throws Exception {
+        log.info("Confirm delete: token={}", dto.getConfirmationToken());
 
         String confirmationToken = dto.getConfirmationToken();
         String key = DELETE_CONFIRM_PREFIX + confirmationToken;
@@ -156,41 +143,41 @@ public class FileDeleteService {
             throw new IllegalStateException("确认token已过期，请重新请求删除");
         }
 
-        bucketPermissionService.assertCanAccess(request.bucketName);
-        return deleteWithRecycle(request.bucketName, request.objectName, request.deleter);
+        DeleteTarget target = new DeleteTarget(request.documentId, request.bucketName,
+                request.objectName, request.documentScoped);
+        if (!target.documentScoped()) {
+            bucketPermissionService.assertCanAccess(target.bucketName());
+        }
+        return deleteDirectly(target, request.deleter);
     }
 
-    /**
-     * 带回收站的删除
-     */
-    private FileDeleteVO deleteWithRecycle(String bucketName, String objectName, String deleter) {
-        log.info("执行删除（带回收站）: bucket={}, object={}", bucketName, objectName);
+    private FileDeleteVO deleteDirectly(DeleteTarget target, String deleter) throws Exception {
+        log.info("Execute direct delete: documentId={}, bucket={}, object={}, deleter={}",
+                target.documentId(), target.bucketName(), target.objectName(), deleter);
 
-        String recycleId = recycleBinService.moveToRecycleBin(bucketName, objectName, deleter);
+        if (target.documentScoped()) {
+            documentServiceClient.deleteDocument(target.documentId());
+        } else {
+            minIOService.deleteFile(target.bucketName(), target.objectName());
+        }
 
         FileDeleteVO vo = new FileDeleteVO();
-        vo.setStatus("recycle");
-        vo.setRecycleId(recycleId);
-        vo.setMessage("文件已移至回收站，可以在有效期内恢复");
+        vo.setStatus("deleted");
+        vo.setMessage(target.documentScoped() ? "文档已永久删除" : "文件已永久删除");
 
-        log.info("文件已移至回收站: recycleId={}", recycleId);
+        log.info("Direct delete completed: documentId={}, bucket={}, object={}",
+                target.documentId(), target.bucketName(), target.objectName());
         return vo;
     }
 
-    /**
-     * 恢复文件
-     * 
-     * @param dto 恢复参数
-     * @return 恢复结果
-     */
     public FileRestoreVO restoreFile(FileRestoreDTO dto) {
-        log.info("恢复文件: recycleId={}", dto.getRecycleId());
+        log.info("Restore file: recycleId={}", dto.getRecycleId());
 
         try {
             String newObjectName = recycleBinService.restoreFromRecycleBin(
-                dto.getRecycleId(), dto.getNewObjectName(), requestUserContext.getRequiredUserId());
+                    dto.getRecycleId(), dto.getNewObjectName(), requestUserContext.getRequiredUserId());
 
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
 
             FileRestoreVO vo = new FileRestoreVO();
@@ -199,21 +186,17 @@ public class FileDeleteService {
             vo.setObjectName(newObjectName);
             vo.setMessage("文件恢复成功");
 
-            log.info("文件恢复成功: bucket={}, object={}", bucketName, newObjectName);
+            log.info("File restored: bucket={}, object={}", bucketName, newObjectName);
             return vo;
 
         } catch (Exception e) {
-            log.error("恢复文件失败", e);
+            log.error("Restore file failed", e);
             throw new RuntimeException("恢复文件失败: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * 清理过期的确认请求
-     * 【待实现】定期调用此方法清理过期的确认请求
-     */
     public void cleanupExpiredConfirmations() {
-        log.info("开始清理过期的删除确认请求");
+        log.info("Start cleaning expired delete confirmations");
 
         try {
             long now = System.currentTimeMillis();
@@ -227,10 +210,10 @@ public class FileDeleteService {
                 }
             }
 
-            log.info("清理完成，删除了 {} 个过期确认请求", removedCount);
+            log.info("Expired delete confirmations cleaned: removed={}", removedCount);
 
         } catch (Exception e) {
-            log.error("清理过期确认请求失败", e);
+            log.error("Clean expired delete confirmations failed", e);
         }
     }
 
@@ -243,5 +226,35 @@ public class FileDeleteService {
             }
         }
         return keys;
+    }
+
+    private String resolveBucketName(String requestedBucketName) {
+        String bucketName = trimToNull(requestedBucketName);
+        if (bucketName != null) {
+            return bucketName;
+        }
+        return UserBucketUtils.bucketNameForUser(requestUserContext.getRequiredUserId());
+    }
+
+    private DeleteTarget resolveDeleteTarget(FileDeleteDTO dto) {
+        String documentId = trimToNull(dto.getDocumentId());
+        if (documentId != null) {
+            return new DeleteTarget(documentId, null, null, true);
+        }
+
+        String bucketName = resolveBucketName(dto.getBucketName());
+        String objectName = trimToNull(dto.getObjectName());
+        if (objectName == null) {
+            throw new IllegalArgumentException("对象名称不能为空，或提供前端documentId");
+        }
+        return new DeleteTarget(null, bucketName, objectName, false);
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -15,6 +15,12 @@ public interface DocumentMapper extends BaseMapper<Document> {
 
     List<Document> selectByUserId(@Param("userId") Long userId);
 
+    List<Document> selectAccessibleByUserId(@Param("userId") Long userId);
+
+    List<Document> searchAccessible(@Param("userId") Long userId,
+                                    @Param("keyword") String keyword,
+                                    @Param("category") String category);
+
     List<Document> selectByCategory(@Param("category") String category);
 
     List<Document> searchByKeyword(@Param("keyword") String keyword);

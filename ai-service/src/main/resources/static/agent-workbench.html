@@ -139,10 +139,25 @@
                     <option value="false">隐藏中间步骤</option>
                 </select>
             </div>
+            <div class="row" style="margin-top: 8px;">
+                <input id="targetDocumentId" placeholder="业务文档ID(documentId)，优先写回文档内容" />
+                <input id="objectName" placeholder="MinIO对象名(objectName)，如 report.txt" />
+            </div>
+            <div class="row" style="margin-top: 8px;">
+                <input id="bucketName" placeholder="存储桶(bucketName)，默认 doc-ai" value="doc-ai" />
+                <select id="writeMode" style="display:none;">
+                    <option value="overwrite">覆盖写入</option>
+                    <option value="append">追加写入</option>
+                </select>
+            </div>
+            <div class="row" style="margin-top: 8px;">
+                <label class="muted"><input type="checkbox" id="directWriteToFile" onchange="onWriteModeToggle()" /> 直接将AI输出写入到文档或文件</label>
+            </div>
             <div class="toolbar">
                 <button onclick="runAgent(false)">执行</button>
                 <button class="secondary" onclick="runAgent(true)">仅生成计划</button>
                 <button class="secondary" onclick="loadTasks()">刷新任务历史</button>
+                <button id="btnContinue" class="warning" style="background:var(--warning);display:none;" onclick="submitContinueActionRequired()">补充信息并继续执行</button>
             </div>
             <div id="runSummary" class="muted">尚未执行任务。</div>
             <h3>Plan</h3>
@@ -159,7 +174,7 @@
         <section class="col-4">
             <h2>3. 危险操作审批</h2>
             <input id="approvalToken" placeholder="agentApprovalToken" />
-            <textarea id="approvalContext" rows="4" placeholder='可选 context JSON，例如 {"objectName":"a.txt"}'></textarea>
+            <textarea id="approvalContext" rows="4" placeholder='可选 context JSON，例如 {"documentId":"doc-1"} 或 {"objectName":"a.txt"}'></textarea>
             <div class="toolbar">
                 <button onclick="confirmApproval()">确认继续</button>
                 <button class="secondary" onclick="cancelApproval()">取消审批</button>
@@ -168,7 +183,7 @@
         </section>
 
         <section class="col-8">
-            <h2>4. 任务历史 / 取消 / 单步重试</h2>
+            <h2>4. 任务历史 / 删除 / 单步重试</h2>
             <div class="row">
                 <input id="traceId" placeholder="traceId" />
                 <input id="stepId" placeholder="stepId（用于单步重试）" />
@@ -188,8 +203,7 @@
             <div class="toolbar">
                 <button onclick="loadTasks()">加载历史</button>
                 <button class="secondary" onclick="loadTaskById()">查询任务</button>
-                <button class="danger" onclick="cancelTask()">取消任务</button>
-                <button onclick="retryStep()">单步重试</button>
+                <button class="danger" onclick="cancelTask()">删除任务</button>
             </div>
             <div id="tasks" class="cards fixed-cards task-cards"></div>
             <div id="taskPagination" class="pagination"></div>
@@ -252,7 +266,11 @@ let taskPage = 1;
 let jobPage = 1;
 
 async function api(path, options = {}) {
-    const headers = options.headers || { 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const token = getAccessToken();
+    if (token && !headers.Authorization) {
+        headers.Authorization = `Bearer ${token}`;
+    }
     const res = await fetch(baseUrl + path, { ...options, headers });
     const text = await res.text();
     let payload;
@@ -261,6 +279,18 @@ async function api(path, options = {}) {
         return { code: res.status, message: res.statusText, data: payload };
     }
     return payload;
+}
+
+function getAccessToken() {
+    try {
+        return localStorage.getItem('accessToken')
+            || localStorage.getItem('token')
+            || sessionStorage.getItem('accessToken')
+            || sessionStorage.getItem('token')
+            || '';
+    } catch (e) {
+        return '';
+    }
 }
 
 function dataOf(resp) {
@@ -393,6 +423,15 @@ function toggleAutoRefresh() {
     }
 }
 
+function onWriteModeToggle() {
+    const directWrite = document.getElementById('directWriteToFile').checked;
+    document.getElementById('writeMode').style.display = directWrite ? '' : 'none';
+}
+
+function normalizeObjectName(value) {
+    return (value || '').trim().replace(/\s+\./g, '.').replace(/\.\s+/g, '.');
+}
+
 function connectProgressSocket() {
     if (!window.SockJS || !window.Stomp) {
         document.getElementById('wsStatus').textContent = 'WebSocket 客户端库未加载，继续使用轮询';
@@ -505,11 +544,34 @@ function renderTools(list) {
 async function runAgent(dryRun = false) {
     const task = document.getElementById('task').value.trim();
     if (!task) return alert('请输入任务');
+    document.getElementById('task').dataset.continueTraceId = '';
+    document.getElementById('btnContinue').style.display = 'none';
     const knowledgeBaseId = document.getElementById('knowledgeBaseId').value || 'default';
     const returnIntermediateSteps = document.getElementById('returnIntermediateSteps').value === 'true';
+    const directWrite = document.getElementById('directWriteToFile').checked;
+    const documentId = document.getElementById('targetDocumentId').value.trim();
+    const objectName = normalizeObjectName(document.getElementById('objectName').value.trim());
+    const bucketName = document.getElementById('bucketName').value.trim() || 'doc-ai';
+    const writeMode = document.getElementById('writeMode').value || 'overwrite';
+    const context = {};
+    if (bucketName) {
+        context.bucketName = bucketName;
+    }
+    if (objectName) {
+        context.objectName = objectName;
+    }
+    if (directWrite) {
+        context.writeMode = writeMode;
+        if (documentId) {
+            context.documentId = documentId;
+            context.reindexAfterWrite = true;
+        } else if (!objectName) {
+            return alert('直接写入模式需要填写业务文档ID或MinIO对象名');
+        }
+    }
     const resp = await api('/execute', {
         method: 'POST',
-        body: JSON.stringify({ task, dryRun, autoReplan: !dryRun, returnIntermediateSteps, knowledgeBaseId })
+        body: JSON.stringify({ task, dryRun, autoReplan: !dryRun, returnIntermediateSteps, knowledgeBaseId, context })
     });
     lastRun = dataOf(resp) || {};
     document.getElementById('planOutput').textContent = JSON.stringify(resp, null, 2);
@@ -628,7 +690,11 @@ async function confirmApproval() {
     });
     document.getElementById('approvalOutput').textContent = JSON.stringify(resp, null, 2);
     const data = dataOf(resp);
-    if (data) renderRun(data);
+    if (data) {
+        renderRun(data);
+        document.getElementById('task').dataset.continueTraceId = '';
+        document.getElementById('btnContinue').style.display = 'none';
+    }
 }
 
 async function cancelApproval() {
@@ -657,9 +723,13 @@ async function loadTaskById() {
 
 async function cancelTask(traceIdArg) {
     const traceId = traceIdArg || document.getElementById('traceId').value.trim();
-    if (!traceId) return alert('请输入 traceId');
-    const resp = await api('/tasks/' + encodeURIComponent(traceId) + '/cancel', { method: 'POST' });
+    if (!traceId) return;
+    const resp = await api('/tasks/' + encodeURIComponent(traceId), { method: 'DELETE' });
     document.getElementById('taskOutput').textContent = JSON.stringify(resp, null, 2);
+    if (document.getElementById('task').dataset.continueTraceId === traceId) {
+        document.getElementById('task').dataset.continueTraceId = '';
+        document.getElementById('btnContinue').style.display = 'none';
+    }
     await loadTasks();
 }
 
@@ -670,10 +740,12 @@ async function retryStep(traceIdArg, stepIdArg) {
     const overrideParams = safeJsonParse(document.getElementById('overrideParams').value, {});
     const resp = await api('/tasks/' + encodeURIComponent(traceId) + '/steps/' + encodeURIComponent(stepId) + '/retry', {
         method: 'POST',
-        body: JSON.stringify(overrideParams)
+        body: JSON.stringify({ overrideParams })
     });
     document.getElementById('taskOutput').textContent = JSON.stringify(resp, null, 2);
-    await loadTaskById();
+    const data = dataOf(resp);
+    if (data && data.plan) renderRun(data);
+    await loadTasks();
 }
 
 function renderTasks(list = lastTasks) {
@@ -683,32 +755,95 @@ function renderTasks(list = lastTasks) {
     const pageInfo = paginate(filtered, taskPage);
     taskPage = pageInfo.currentPage;
     if (!filtered.length) {
-        el.innerHTML = '<div class="empty">暂无任务历史</div>';
+        el.innerHTML = '<div class="empty">暂无任务</div>';
         renderPagination('taskPagination', pageInfo, 'task');
         return;
     }
     el.innerHTML = pageInfo.items.map(t => {
-        const retryableSteps = (t.plan || []).filter(step => step.status === 'error' || step.status === 'blocked');
+        const answer = (t.answer || '').slice(0, 120);
+        const retryableSteps = (t.plan || []).filter(s => s.status === 'error' || s.status === 'failed');
+        const isActionRequired = t.status === 'action_required';
+        const hasApprovalToken = t.pendingApproval && t.pendingApproval.agentApprovalToken;
         return `
-        <div class="card" onclick="selectTask('${escapeHtml(t.traceId || '')}')">
-            <div class="card-title"><span>${escapeHtml((t.task || '').slice(0, 28) || t.traceId)}</span>${statusBadge(t.status)}</div>
-            <div class="muted mono">traceId: ${escapeHtml(t.traceId)}</div>
-            <div class="muted">${formatTime(t.savedAt)} · ${escapeHtml(t.durationMs || 0)}ms</div>
-            <div class="muted">stoppedReason: ${escapeHtml(t.stoppedReason || '-')}</div>
-            <div style="margin-top:8px;"><span class="badge gray">steps ${(t.plan || []).length}</span><span class="badge gray">tools ${escapeHtml(t.toolCallCount || 0)}</span></div>
-            <div class="inline-actions">
-                <button class="secondary" onclick="stopCardClick(event); selectTask('${escapeHtml(t.traceId || '')}')">查看</button>
-                <button class="danger" onclick="stopCardClick(event); cancelTask('${escapeHtml(t.traceId || '')}')">取消</button>
-                ${retryableSteps.length ? `<button onclick="stopCardClick(event); retryStep('${escapeHtml(t.traceId || '')}', '${escapeHtml(retryableSteps[0].id || '')}')">重试失败步骤</button>` : ''}
+            <div class="card" onclick="selectTask('${escapeHtml(t.traceId || '')}')">
+                <div class="card-title"><span>${escapeHtml((t.task || '').slice(0, 60))}</span>${statusBadge(t.status)}</div>
+                <div class="muted mono">traceId: ${escapeHtml(t.traceId)}</div>
+                <div class="muted">${formatTime(t.savedAt)} · ${escapeHtml(t.durationMs || 0)}ms</div>
+                <div class="muted">stoppedReason: ${escapeHtml(t.stoppedReason || '-')}</div>
+                <div style="margin-top:8px;"><span class="badge gray">steps ${(t.plan || []).length}</span><span class="badge gray">tools ${escapeHtml(t.toolCallCount || 0)}</span></div>
+                <div class="inline-actions">
+                    <button class="secondary" onclick="stopCardClick(event); selectTask('${escapeHtml(t.traceId || '')}')">查看</button>
+                    <button class="danger" onclick="stopCardClick(event); cancelTask('${escapeHtml(t.traceId || '')}')">删除</button>
+                    ${isActionRequired ? `<button onclick="stopCardClick(event); continueActionRequired('${escapeHtml(t.traceId || '')}')">补充并继续</button>` : ''}
+                    ${retryableSteps.length ? `<button onclick="stopCardClick(event); retryStep('${escapeHtml(t.traceId || '')}', '${escapeHtml(retryableSteps[0].id || '')}')">重试失败步骤</button>` : ''}
+                </div>
             </div>
-        </div>
-    `;
+        `;
     }).join('');
     renderPagination('taskPagination', pageInfo, 'task');
 }
 
+function continueActionRequired(traceId) {
+    const task = lastTasks.find(t => t.traceId === traceId);
+    if (!task) return alert('未找到该任务');
+    document.getElementById('traceId').value = traceId;
+    document.getElementById('task').value = task.task || '';
+    document.getElementById('task').dataset.continueTraceId = traceId;
+    document.getElementById('btnContinue').style.display = '';
+    if (task.pendingApproval && task.pendingApproval.agentApprovalToken) {
+        document.getElementById('approvalToken').value = task.pendingApproval.agentApprovalToken;
+        document.getElementById('approvalOutput').textContent = JSON.stringify({
+            message: '已加载待补充任务，请在下方任务框中补充额外需求后点击"补充信息并继续执行"',
+            traceId: traceId,
+            originalTask: task.task,
+            pendingApproval: task.pendingApproval
+        }, null, 2);
+    }
+    document.getElementById('runSummary').innerHTML = `
+        <span class="badge warning">补充模式</span>
+        正在对 traceId=<strong>${escapeHtml(traceId)}</strong> 的任务补充信息，请在任务框中输入额外需求后点击下方按钮。
+    `;
+    document.getElementById('planCards').innerHTML = '';
+    document.getElementById('timeline').innerHTML = '';
+    document.getElementById('sources').innerHTML = '';
+    document.getElementById('planOutput').textContent = JSON.stringify({ continueTraceId: traceId, originalTask: task.task, status: task.status }, null, 2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function submitContinueActionRequired() {
+    const traceId = document.getElementById('traceId').value.trim();
+    const taskInput = document.getElementById('task').value.trim();
+    if (!traceId || !taskInput) return alert('请输入 traceId 和补充后的任务描述');
+    const extraContext = safeJsonParse(document.getElementById('approvalContext').value, {});
+    const body = { task: taskInput, context: { ...extraContext } };
+    const resp = await api('/tasks/' + encodeURIComponent(traceId) + '/continue', {
+        method: 'POST',
+        body: JSON.stringify(body)
+    });
+    document.getElementById('approvalOutput').textContent = JSON.stringify(resp, null, 2);
+    const data = dataOf(resp);
+    if (data) {
+        renderRun(data);
+        document.getElementById('task').dataset.continueTraceId = '';
+        document.getElementById('btnContinue').style.display = 'none';
+        document.getElementById('runSummary').innerHTML = (document.getElementById('runSummary').innerHTML || '') + ' <span class="badge success">已提交补充</span>';
+    }
+    await loadTasks();
+}
+
 function selectTask(traceId) {
     document.getElementById('traceId').value = traceId;
+    const task = lastTasks.find(t => t.traceId === traceId);
+    if (task && task.status === 'action_required') {
+        document.getElementById('task').value = task.task || '';
+        document.getElementById('task').dataset.continueTraceId = traceId;
+        document.getElementById('btnContinue').style.display = '';
+        if (task.pendingApproval && task.pendingApproval.agentApprovalToken) {
+            document.getElementById('approvalToken').value = task.pendingApproval.agentApprovalToken;
+        }
+    } else {
+        document.getElementById('btnContinue').style.display = 'none';
+    }
     loadTaskById();
 }
 
@@ -718,14 +853,11 @@ async function indexAsync() {
     const knowledgeBaseId = document.getElementById('indexKnowledgeBaseId').value || 'default';
     if (!documentId || !content.trim()) return alert('请输入 documentId 和文档内容');
     const resp = await api('/knowledge/index/async?documentId=' + encodeURIComponent(documentId) + '&knowledgeBaseId=' + encodeURIComponent(knowledgeBaseId), {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: content
     });
     document.getElementById('indexOutput').textContent = JSON.stringify(resp, null, 2);
     const data = dataOf(resp);
     if (data && data.jobId) document.getElementById('jobId').value = data.jobId;
-    await loadJobs();
 }
 
 async function loadJob() {

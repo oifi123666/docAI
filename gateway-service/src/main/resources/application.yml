@@ -46,7 +46,7 @@ spring:
         max-concurrency: 10
         prefetch: 1
         auto-startup: true
-        default-requeue-rejected: true
+        default-requeue-rejected: false
 
 server:
   port: 8080

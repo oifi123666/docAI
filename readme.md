@@ -417,7 +417,7 @@ services:
         max_replicas_per_node: 1
       restart_policy:
         condition: on-failure
-    command: redis-server --requirepass your_redis_password
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     networks:
@@ -547,7 +547,7 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PASSWORD: your_redis_password
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
     networks:
       - docai-network
     ports:
@@ -609,7 +609,7 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PASSWORD: your_redis_password
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: guest
       SPRING_RABBITMQ_PASSWORD: guest

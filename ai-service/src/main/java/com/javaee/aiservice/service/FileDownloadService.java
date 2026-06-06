@@ -2,7 +2,9 @@ package com.javaee.aiservice.service;
 
 import com.javaee.aiservice.dto.FileDownloadDTO;
 import com.javaee.aiservice.security.BucketPermissionService;
+import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.vo.FileDownloadVO;
+import com.javaee.common.utils.UserBucketUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,8 +28,8 @@ public class FileDownloadService {
     @Autowired
     private BucketPermissionService bucketPermissionService;
 
-    @Value("${minio.bucket:documents}")
-    private String defaultBucket;
+    @Autowired
+    private RequestUserContext requestUserContext;
 
     @Value("${minio.url.expiry:3600}")
     private int defaultExpiry;
@@ -45,7 +47,7 @@ public class FileDownloadService {
 
         try {
             // 确定存储桶名称
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
             
             // 确定对象名称
@@ -80,7 +82,7 @@ public class FileDownloadService {
 
         try {
             // 确定存储桶名称
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
             
             // 确定对象名称
@@ -111,5 +113,12 @@ public class FileDownloadService {
             log.error("获取文件URL失败", e);
             throw new RuntimeException("获取文件URL失败: " + e.getMessage(), e);
         }
+    }
+
+    private String resolveBucketName(String requestedBucketName) {
+        if (requestedBucketName != null && !requestedBucketName.isBlank()) {
+            return requestedBucketName;
+        }
+        return UserBucketUtils.bucketNameForUser(requestUserContext.getRequiredUserId());
     }
 }

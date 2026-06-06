@@ -32,7 +32,7 @@ services:
     environment:
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER-ADDR: nacos:8848
       SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PASSWORD: your_redis_password
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
     networks:
       - docai-network
     ports:

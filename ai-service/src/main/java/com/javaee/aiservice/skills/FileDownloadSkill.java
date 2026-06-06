@@ -1,7 +1,9 @@
 package com.javaee.aiservice.skills;
 
 import com.javaee.aiservice.security.BucketPermissionService;
+import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.service.MinIOService;
+import com.javaee.common.utils.UserBucketUtils;
 
 import java.io.InputStream;
 
@@ -9,10 +11,13 @@ public class FileDownloadSkill implements Skill {
 
     private final MinIOService minIOService;
     private final BucketPermissionService bucketPermissionService;
+    private final RequestUserContext requestUserContext;
 
-    public FileDownloadSkill(MinIOService minIOService, BucketPermissionService bucketPermissionService) {
+    public FileDownloadSkill(MinIOService minIOService, BucketPermissionService bucketPermissionService,
+                             RequestUserContext requestUserContext) {
         this.minIOService = minIOService;
         this.bucketPermissionService = bucketPermissionService;
+        this.requestUserContext = requestUserContext;
     }
 
     @Override
@@ -32,7 +37,9 @@ public class FileDownloadSkill implements Skill {
         }
 
         String objectName = (String) parameters[0];
-        String requestedBucketName = parameters.length > 1 && parameters[1] != null ? (String) parameters[1] : "documents";
+        String requestedBucketName = parameters.length > 1 && parameters[1] != null
+                ? (String) parameters[1]
+                : UserBucketUtils.bucketNameForUser(requestUserContext.getRequiredUserId());
         String bucketName = requestedBucketName;
         String bucketMessage = null;
 
@@ -41,16 +48,11 @@ public class FileDownloadSkill implements Skill {
         try {
             // 检查请求的桶是否存在
             if (!minIOService.bucketExists(requestedBucketName)) {
-                bucketMessage = "桶不存在: " + requestedBucketName + "，使用默认桶: documents";
-                bucketName = "documents";
+                bucketMessage = "桶不存在: " + requestedBucketName;
                 System.out.println(bucketMessage);
             }
-            
-            // 检查默认桶是否存在，如果不存在则使用doc-ai
-            if ("documents".equals(bucketName) && !minIOService.bucketExists(bucketName)) {
-                bucketMessage = "默认桶不存在: documents，使用备用桶: doc-ai";
-                bucketName = "doc-ai";
-                System.out.println(bucketMessage);
+            if (bucketMessage != null) {
+                throw new IllegalArgumentException(bucketMessage);
             }
             bucketPermissionService.assertCanAccess(bucketName);
 

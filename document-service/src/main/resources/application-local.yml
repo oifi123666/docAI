@@ -7,6 +7,12 @@ spring:
     username: ${MYSQL_LOCAL_USERNAME:root}
     password: ${MYSQL_LOCAL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 0
+      idle-timeout: 30000
+      max-lifetime: 300000
+      connection-timeout: 10000
   
   cloud:
     compatibility-verifier:

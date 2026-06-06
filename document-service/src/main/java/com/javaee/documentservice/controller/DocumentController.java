@@ -5,6 +5,7 @@ import com.javaee.documentservice.dto.DocumentCreateDTO;
 import com.javaee.documentservice.dto.DocumentQueryDTO;
 import com.javaee.documentservice.dto.DocumentUpdateDTO;
 import com.javaee.documentservice.entity.DocumentVersion;
+import com.javaee.documentservice.security.RequestUserContext;
 import com.javaee.documentservice.service.DocumentService;
 import com.javaee.documentservice.vo.DocumentVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +28,9 @@ public class DocumentController {
     @Autowired
     private DocumentService documentService;
 
+    @Autowired
+    private RequestUserContext requestUserContext;
+
     /**
      * 创建文档
      * @param dto 创建文档请求参数
@@ -35,7 +39,7 @@ public class DocumentController {
     @PostMapping
     @Operation(summary = "创建文档", description = "创建新文档，自动保存初始版本")
     public Result<DocumentVO> create(@RequestBody DocumentCreateDTO dto) {
-        Long userId = 1L;
+        Long userId = requestUserContext.getRequiredUserId();
         DocumentVO document = documentService.create(dto, userId);
         return Result.success(document);
     }
@@ -51,7 +55,7 @@ public class DocumentController {
     public Result<DocumentVO> update(
             @Parameter(description = "文档ID") @PathVariable String id,
             @RequestBody DocumentUpdateDTO dto) {
-        Long userId = 1L;
+        Long userId = requestUserContext.getRequiredUserId();
         DocumentVO document = documentService.update(id, dto, userId);
         return Result.success(document);
     }
@@ -64,8 +68,26 @@ public class DocumentController {
     @DeleteMapping("/{id}")
     @Operation(summary = "删除文档", description = "软删除文档，将文档状态标记为已删除")
     public Result<Void> delete(@Parameter(description = "文档ID") @PathVariable String id) {
-        Long userId = 1L;
+        Long userId = requestUserContext.getRequiredUserId();
         documentService.delete(id, userId);
+        return Result.success();
+    }
+
+    /**
+     * 添加文档协作者
+     * @param id 文档ID
+     * @param collaboratorUserId 协作者用户ID
+     * @param role 协作角色
+     * @return 无
+     */
+    @PostMapping("/{id}/collaborators/{collaboratorUserId}")
+    @Operation(summary = "添加文档协作者", description = "为文档授权协作者，角色支持 owner/editor/viewer")
+    public Result<Void> grantAccess(
+            @Parameter(description = "文档ID") @PathVariable String id,
+            @Parameter(description = "协作者用户ID") @PathVariable Long collaboratorUserId,
+            @Parameter(description = "协作角色") @RequestParam(defaultValue = "editor") String role) {
+        Long userId = requestUserContext.getRequiredUserId();
+        documentService.grantAccess(id, collaboratorUserId, role, userId);
         return Result.success();
     }
 
@@ -77,7 +99,21 @@ public class DocumentController {
     @GetMapping("/{id}")
     @Operation(summary = "获取文档详情", description = "根据文档ID获取文档详细信息")
     public Result<DocumentVO> getById(@Parameter(description = "文档ID") @PathVariable String id) {
-        DocumentVO document = documentService.getById(id);
+        Long userId = requestUserContext.getRequiredUserId();
+        DocumentVO document = documentService.getById(id, userId);
+        return Result.success(document);
+    }
+
+    /**
+     * 获取文档MinIO存储位置
+     * @param id 文档ID
+     * @return 文档存储位置
+     */
+    @GetMapping("/{id}/storage")
+    @Operation(summary = "获取文档存储位置", description = "根据文档ID获取其MinIO bucket/objectName，供AI文件操作使用")
+    public Result<DocumentVO> getStorageLocation(@Parameter(description = "文档ID") @PathVariable String id) {
+        Long userId = requestUserContext.getRequiredUserId();
+        DocumentVO document = documentService.getStorageLocation(id, userId);
         return Result.success(document);
     }
 
@@ -89,7 +125,11 @@ public class DocumentController {
     @GetMapping("/user/{userId}")
     @Operation(summary = "获取用户文档列表", description = "获取指定用户的所有活跃文档列表")
     public Result<List<DocumentVO>> getByUserId(@Parameter(description = "用户ID") @PathVariable Long userId) {
-        List<DocumentVO> documents = documentService.getByUserId(userId);
+        Long currentUserId = requestUserContext.getRequiredUserId();
+        if (!currentUserId.equals(userId)) {
+            throw new com.javaee.common.exception.BusinessException("无权查看其他用户的文档");
+        }
+        List<DocumentVO> documents = documentService.getByUserId(currentUserId);
         return Result.success(documents);
     }
 
@@ -107,7 +147,8 @@ public class DocumentController {
         DocumentQueryDTO dto = new DocumentQueryDTO();
         dto.setKeyword(keyword);
         dto.setCategory(category);
-        List<DocumentVO> documents = documentService.search(dto);
+        Long userId = requestUserContext.getRequiredUserId();
+        List<DocumentVO> documents = documentService.search(dto, userId);
         return Result.success(documents);
     }
 
@@ -119,7 +160,8 @@ public class DocumentController {
     @GetMapping("/{id}/versions")
     @Operation(summary = "获取文档版本列表", description = "获取文档的所有历史版本，按版本号降序排列")
     public Result<List<DocumentVersion>> getVersions(@Parameter(description = "文档ID") @PathVariable String id) {
-        List<DocumentVersion> versions = documentService.getVersions(id);
+        Long userId = requestUserContext.getRequiredUserId();
+        List<DocumentVersion> versions = documentService.getVersions(id, userId);
         return Result.success(versions);
     }
 
@@ -134,7 +176,7 @@ public class DocumentController {
     public Result<DocumentVO> restoreVersion(
             @Parameter(description = "文档ID") @PathVariable String id,
             @Parameter(description = "版本号") @PathVariable Integer versionNumber) {
-        Long userId = 1L;
+        Long userId = requestUserContext.getRequiredUserId();
         DocumentVO document = documentService.restoreVersion(id, versionNumber, userId);
         return Result.success(document);
     }

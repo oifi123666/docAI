@@ -12,8 +12,12 @@ import com.javaee.aiservice.agent.execution.tool.AgentToolParameterDefinition;
 import com.javaee.aiservice.agent.execution.tool.AgentToolRegistry;
 import com.javaee.aiservice.conversation.ContextManager;
 import com.javaee.aiservice.conversation.ConversationManager;
+import com.javaee.aiservice.dto.FileDeleteDTO;
 import com.javaee.aiservice.internal.InternalService;
 import com.javaee.aiservice.security.RequestUserContext;
+import com.javaee.aiservice.service.FileDeleteService;
+import com.javaee.aiservice.vo.FileDeleteVO;
+import com.javaee.aiservice.vo.FileRestoreVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -25,8 +29,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AgentExecutionServiceTest {
@@ -39,13 +45,28 @@ class AgentExecutionServiceTest {
         AgentToolDefinition restoreTool = registry.get("file-restore");
 
         assertThat(deleteTool).isNotNull();
-        assertThat(deleteTool.isDestructive()).isTrue();
-        assertThat(deleteTool.getRiskLevel()).isEqualTo("high");
-        assertThat(deleteTool.getParameterSchema().get("objectName").isRequired()).isTrue();
-        assertThat(deleteTool.getParameterSchema().get("requireConfirmation").getType()).isEqualTo("boolean");
+        assertThat(deleteTool.isDestructive()).isFalse();
+        assertThat(deleteTool.getRiskLevel()).isEqualTo("low");
+        assertThat(deleteTool.getParameterSchema().get("objectName").isRequired()).isFalse();
+        assertThat(deleteTool.getParameterSchema().get("documentId").isRequired()).isFalse();
+        assertThat(deleteTool.getParameterSchema()).doesNotContainKeys("requireConfirmation", "confirmationToken");
         assertThat(restoreTool).isNotNull();
         assertThat(restoreTool.isDestructive()).isTrue();
         assertThat(registry.get("file-upload")).isNull();
+
+        AgentToolDefinition documentRead = registry.get("document-read");
+        AgentToolDefinition documentWrite = registry.get("document-write");
+        AgentToolDefinition textToFile = registry.get("text-to-file");
+        assertThat(documentRead).isNotNull();
+        assertThat(documentRead.getParameterSchema().get("documentId").isRequired()).isTrue();
+        assertThat(documentWrite).isNotNull();
+        assertThat(documentWrite.getParameterSchema().get("documentId").isRequired()).isFalse();
+        assertThat(documentWrite.getParameterSchema().get("content").isRequired()).isTrue();
+        assertThat(documentWrite.getParameterSchema()).containsKey("insertAfterText");
+        assertThat(documentWrite.getDescription()).contains("前端");
+        assertThat(textToFile).isNotNull();
+        assertThat(textToFile.getParameterSchema().get("objectName").isRequired()).isFalse();
+        assertThat(textToFile.getParameterSchema().get("content").isRequired()).isTrue();
     }
 
     @Test
@@ -93,7 +114,142 @@ class AgentExecutionServiceTest {
 
         @SuppressWarnings("unchecked")
         List<String> missingParameters = (List<String>) toolResults.get(0).getData().get("missingParameters");
-        assertThat(missingParameters).containsExactly("objectName");
+        assertThat(missingParameters).containsExactly("documentId/objectName");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void executeFreezesCurrentIterationWhenStepRequiresAction() {
+        AgentExecutionService service = new AgentExecutionService();
+        AgentToolRegistry registry = new AgentToolRegistry();
+        ChatService chatService = mock(ChatService.class);
+        ConversationManager conversationManager = mock(ConversationManager.class);
+        ContextManager contextManager = mock(ContextManager.class);
+        InternalService internalService = mock(InternalService.class);
+        RequestUserContext requestUserContext = mock(RequestUserContext.class);
+
+        when(requestUserContext.getRequiredUserId()).thenReturn("user-1");
+        when(requestUserContext.getCurrentRole()).thenReturn("USER");
+        when(conversationManager.createConversation("user-1")).thenReturn("conv-1");
+        when(contextManager.getContext("conv-1")).thenReturn(new HashMap<>());
+        when(internalService.hasPermission(any(), any())).thenReturn(true);
+        when(chatService.callChatApiWithModelCode(any(), any()))
+                .thenReturn("""
+                        [
+                          {"id":"ask","description":"先问用户","toolName":"ask-user","params":{"question":"请补充目标文件"}},
+                          {"id":"answer","description":"后续回答","toolName":"direct-answer","params":{"question":"不应在同一轮提前执行"}}
+                        ]
+                        """, "请补充目标文件");
+        doNothing().when(conversationManager).addMessageForUser(eq("conv-1"), eq("user-1"), any(), any());
+        doNothing().when(contextManager).updateContext(eq("conv-1"), any());
+        doNothing().when(internalService).logAudit(any(), any(), any());
+
+        ReflectionTestUtils.setField(service, "chatService", chatService);
+        ReflectionTestUtils.setField(service, "conversationManager", conversationManager);
+        ReflectionTestUtils.setField(service, "contextManager", contextManager);
+        ReflectionTestUtils.setField(service, "internalService", internalService);
+        ReflectionTestUtils.setField(service, "toolRegistry", registry);
+        ReflectionTestUtils.setField(service, "requestUserContext", requestUserContext);
+        ReflectionTestUtils.setField(service, "taskRegistry", new AgentTaskRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("先问用户再回答");
+        request.setContext(Map.of());
+        request.setReflectionEnabled(false);
+        request.setAutoReplan(false);
+
+        Map<String, Object> response = service.execute(request);
+
+        assertThat(response.get("status")).isEqualTo("action_required");
+        assertThat(response.get("stoppedReason")).isEqualTo("action_required");
+
+        List<AgentToolResult> toolResults = (List<AgentToolResult>) response.get("toolResults");
+        assertThat(toolResults).hasSize(1);
+        assertThat(toolResults.get(0).getToolName()).isEqualTo("ask-user");
+
+        List<AgentPlanStep> plan = (List<AgentPlanStep>) response.get("plan");
+        assertThat(plan).hasSize(2);
+        assertThat(plan.get(0).getStatus()).isEqualTo(AgentStepStatus.WAITING_USER.value());
+        assertThat(plan.get(1).getToolName()).isEqualTo("direct-answer");
+        assertThat(plan.get(1).getStatus()).isEqualTo(AgentStepStatus.PENDING.value());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void confirmApprovalContinuesFrozenPlanInsteadOfReturningSingleToolResult() {
+        AgentExecutionService service = new AgentExecutionService();
+        AgentToolRegistry registry = new AgentToolRegistry();
+        ChatService chatService = mock(ChatService.class);
+        ConversationManager conversationManager = mock(ConversationManager.class);
+        ContextManager contextManager = mock(ContextManager.class);
+        InternalService internalService = mock(InternalService.class);
+        FileDeleteService fileDeleteService = mock(FileDeleteService.class);
+        RequestUserContext requestUserContext = mock(RequestUserContext.class);
+        AgentApprovalService agentApprovalService = mock(AgentApprovalService.class);
+        AgentTaskRegistry taskRegistry = new AgentTaskRegistry();
+
+        when(requestUserContext.getRequiredUserId()).thenReturn("user-1");
+        when(requestUserContext.getCurrentRole()).thenReturn("USER");
+        when(conversationManager.createConversation("user-1")).thenReturn("conv-1");
+        when(contextManager.getContext("conv-1")).thenReturn(new HashMap<>());
+        when(internalService.hasPermission(any(), any())).thenReturn(true);
+        when(chatService.callChatApiWithModelCode(any(), any()))
+                .thenReturn("""
+                        [
+                          {"id":"restore","description":"恢复文件","toolName":"file-restore","params":{"recycleId":"rid-1","bucketName":"doc-ai"}},
+                          {"id":"answer","description":"告知用户结果","toolName":"direct-answer","params":{"question":"恢复完成后告诉用户"},"dependsOn":["restore"]}
+                        ]
+                        """, "请确认恢复操作", "恢复已完成");
+        when(agentApprovalService.verifyAndConsumeDetailed(any(), eq("user-1"), eq("file-restore"), any()))
+                .thenReturn(AgentApprovalService.ApprovalResult.MISSING);
+        when(agentApprovalService.verifyAndConsumeDetailed(eq("tok-restore"), eq("user-1"), eq("file-restore"), any()))
+                .thenReturn(AgentApprovalService.ApprovalResult.OK);
+        when(agentApprovalService.createChallenge(eq("user-1"), eq("file-restore"), any()))
+                .thenReturn(new AgentApprovalService.ApprovalChallenge("tok-restore", 123456L));
+        when(fileDeleteService.restoreFile(any()))
+                .thenReturn(new FileRestoreVO("restored", "http://file", "doc-ai", "a.txt", "恢复成功"));
+        doNothing().when(conversationManager).addMessageForUser(eq("conv-1"), eq("user-1"), any(), any());
+        doNothing().when(contextManager).updateContext(eq("conv-1"), any());
+        doNothing().when(internalService).logAudit(any(), any(), any());
+
+        ReflectionTestUtils.setField(service, "chatService", chatService);
+        ReflectionTestUtils.setField(service, "conversationManager", conversationManager);
+        ReflectionTestUtils.setField(service, "contextManager", contextManager);
+        ReflectionTestUtils.setField(service, "internalService", internalService);
+        ReflectionTestUtils.setField(service, "toolRegistry", registry);
+        ReflectionTestUtils.setField(service, "fileDeleteService", fileDeleteService);
+        ReflectionTestUtils.setField(service, "requestUserContext", requestUserContext);
+        ReflectionTestUtils.setField(service, "agentApprovalService", agentApprovalService);
+        ReflectionTestUtils.setField(service, "taskRegistry", taskRegistry);
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("恢复文件后告诉我结果");
+        request.setContext(Map.of());
+        request.setReflectionEnabled(false);
+        request.setAutoReplan(false);
+
+        Map<String, Object> firstResponse = service.execute(request);
+        assertThat(firstResponse.get("status")).isEqualTo("action_required");
+        assertThat(firstResponse).containsKey("pendingApproval");
+
+        AgentExecutionRequest confirm = new AgentExecutionRequest();
+        confirm.setTask("确认恢复");
+        confirm.setApprovalToken("tok-restore");
+        confirm.setReflectionEnabled(false);
+        confirm.setAutoReplan(false);
+
+        Map<String, Object> resumed = service.confirmApproval(confirm);
+
+        assertThat(resumed.get("status")).isEqualTo("success");
+        assertThat(resumed.get("stoppedReason")).isEqualTo("completed");
+        assertThat(resumed).doesNotContainKey("pendingApproval");
+        assertThat(resumed.get("answer")).isEqualTo("恢复已完成");
+
+        List<AgentToolResult> toolResults = (List<AgentToolResult>) resumed.get("toolResults");
+        assertThat(toolResults).extracting(AgentToolResult::getToolName)
+                .containsExactly("file-restore", "direct-answer");
+        assertThat(toolResults).extracting(AgentToolResult::getStatus)
+                .containsExactly("success", "success");
     }
 
     @Test
@@ -188,6 +344,76 @@ class AgentExecutionServiceTest {
     }
 
     @Test
+    void executeFileDeleteRunsDirectlyWhenObjectNameIsKnown() {
+        AgentExecutionService service = new AgentExecutionService();
+        AgentToolRegistry registry = new AgentToolRegistry();
+        ChatService chatService = mock(ChatService.class);
+        ConversationManager conversationManager = mock(ConversationManager.class);
+        ContextManager contextManager = mock(ContextManager.class);
+        InternalService internalService = mock(InternalService.class);
+        FileDeleteService fileDeleteService = mock(FileDeleteService.class);
+        RequestUserContext requestUserContext = mock(RequestUserContext.class);
+
+        when(requestUserContext.getRequiredUserId()).thenReturn("user-1");
+        when(requestUserContext.getCurrentRole()).thenReturn("USER");
+        when(conversationManager.createConversation("user-1")).thenReturn("conv-1");
+        when(contextManager.getContext("conv-1")).thenReturn(new HashMap<>());
+        when(chatService.callChatApiWithModelCode(any(), any())).thenThrow(new RuntimeException("planner unavailable"));
+        when(internalService.hasPermission(eq("file-delete"), any())).thenReturn(true);
+        when(fileDeleteService.deleteFile(any(FileDeleteDTO.class), eq("agent-approved:user-1")))
+                .thenReturn(new FileDeleteVO("recycle", null, null, "rid-1", "已移入回收站"));
+        doNothing().when(conversationManager).addMessageForUser(eq("conv-1"), eq("user-1"), any(), any());
+        doNothing().when(contextManager).updateContext(eq("conv-1"), any());
+        doNothing().when(internalService).logAudit(any(), any(), any());
+
+        ReflectionTestUtils.setField(service, "chatService", chatService);
+        ReflectionTestUtils.setField(service, "conversationManager", conversationManager);
+        ReflectionTestUtils.setField(service, "contextManager", contextManager);
+        ReflectionTestUtils.setField(service, "internalService", internalService);
+        ReflectionTestUtils.setField(service, "toolRegistry", registry);
+        ReflectionTestUtils.setField(service, "fileDeleteService", fileDeleteService);
+        ReflectionTestUtils.setField(service, "requestUserContext", requestUserContext);
+        ReflectionTestUtils.setField(service, "taskRegistry", new AgentTaskRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("删除文件");
+        request.setContext(Map.of(
+                "objectName", "79dd2c3f-demo.docx",
+                "bucketName", "doc-ai-real"));
+        request.setReflectionEnabled(false);
+
+        Map<String, Object> result = service.execute(request);
+
+        assertThat(result.get("status")).isEqualTo("success");
+        assertThat(result).doesNotContainKey("pendingApproval");
+        verify(fileDeleteService).deleteFile(
+                argThat(dto -> "79dd2c3f-demo.docx".equals(dto.getObjectName())
+                        && "doc-ai-real".equals(dto.getBucketName())
+                        && Boolean.FALSE.equals(dto.getRequireConfirmation())),
+                eq("agent-approved:user-1"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void fallbackPlanExtractsUnquotedObjectNameForFileDelete() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("删除文件6d96d090927b45118bd722519dabdce2.pdf");
+
+        List<AgentPlanStep> plan = ReflectionTestUtils.invokeMethod(
+                service, "fallbackPlan", request, Map.of("bucketName", "doc-ai"));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).getToolName()).isEqualTo("file-delete");
+        assertThat(plan.get(0).getParams())
+                .containsEntry("objectName", "6d96d090927b45118bd722519dabdce2.pdf")
+                .containsEntry("bucketName", "doc-ai")
+                .containsEntry("requireConfirmation", false);
+    }
+
+    @Test
     void resolvePlaceholdersFillsTaskAndStepValues() {
         AgentExecutionService service = new AgentExecutionService();
 
@@ -257,6 +483,158 @@ class AgentExecutionServiceTest {
         request.setReflectionEnabled(false);
 
         assertThat(request.getReflectionEnabled()).isFalse();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void fallbackPlanUsesFrontendWritePatchWhenDocumentIdExists() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("把这个文档进行内容扩写");
+        request.setKnowledgeBaseId("kb-1");
+
+        List<AgentPlanStep> plan = ReflectionTestUtils.invokeMethod(
+                service, "fallbackPlan", request, Map.of("documentId", "doc-1", "writeMode", "append"));
+
+        assertThat(plan).hasSize(2);
+        assertThat(plan).extracting(AgentPlanStep::getToolName)
+                .containsExactly("direct-answer", "document-write");
+        assertThat(plan.get(1).getParams())
+                .containsEntry("documentId", "doc-1")
+                .containsEntry("content", "${answer}")
+                .containsEntry("writeMode", "append")
+                .containsEntry("knowledgeBaseId", "kb-1");
+    }
+
+    @Test
+    void fallbackPlanUsesDocumentIdForDeleteInsteadOfFrontendWrite() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("删除当前前端文档对应的文件");
+
+        List<AgentPlanStep> plan = ReflectionTestUtils.invokeMethod(
+                service, "fallbackPlan", request, Map.of("documentId", "doc-1", "userId", "7"));
+
+        assertThat(plan).hasSize(1);
+        assertThat(plan.get(0).getToolName()).isEqualTo("file-delete");
+        assertThat(plan.get(0).getParams())
+                .containsEntry("documentId", "doc-1")
+                .containsEntry("requireConfirmation", false);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void fallbackPlanKeepsObjectNameCompatibilityPath() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("生成一段说明并写入文件");
+
+        List<AgentPlanStep> plan = ReflectionTestUtils.invokeMethod(
+                service, "fallbackPlan", request, Map.of("objectName", "report.txt", "bucketName", "documents"));
+
+        assertThat(plan).hasSize(2);
+        assertThat(plan).extracting(AgentPlanStep::getToolName)
+                .containsExactly("direct-answer", "text-to-file");
+        assertThat(plan.get(1).getParams())
+                .containsEntry("content", "${answer}")
+                .containsEntry("objectName", "report.txt")
+                .containsEntry("bucketName", "documents");
+    }
+
+    @Test
+    void fallbackPlanDefaultsCompatibilityFileWriteToUserBucket() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("生成一段说明并写入文件");
+        request.setUserId("42");
+
+        List<AgentPlanStep> plan = ReflectionTestUtils.invokeMethod(
+                service, "fallbackPlan", request, Map.of("objectName", "report.txt"));
+
+        assertThat(plan).hasSize(2);
+        assertThat(plan.get(1).getParams())
+                .containsEntry("objectName", "report.txt")
+                .containsEntry("bucketName", "user-42");
+    }
+
+    @Test
+    void documentWriteMissingGeneratedContentRequiresAction() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("把这个文档进行内容扩写");
+        AgentPlanStep step = new AgentPlanStep("step-1", "写回文档", "document-write", new HashMap<>());
+        step.getParams().put("documentId", "doc-1");
+
+        ReflectionTestUtils.invokeMethod(service, "fillDefaultParams", step, request, Map.of("documentId", "doc-1"));
+        AgentToolResult validation = ReflectionTestUtils.invokeMethod(service, "validateToolParameters", step);
+
+        assertThat(step.getParams()).doesNotContainKey("content");
+        assertThat(validation).isNotNull();
+        assertThat(validation.getStatus()).isEqualTo("action_required");
+        assertThat(validation.getData()).containsEntry("missingParameters", List.of("content"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void documentWriteReturnsFrontendPatchWithoutPersisting() {
+        AgentExecutionService service = new AgentExecutionService();
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setKnowledgeBaseId("kb-1");
+        request.setUserId("user-1");
+        Map<String, Object> params = new HashMap<>();
+        params.put("documentId", "doc-1");
+        params.put("content", "扩写内容");
+        params.put("writeMode", "append");
+        params.put("knowledgeBaseId", "kb-1");
+
+        AgentToolResult result = ReflectionTestUtils.invokeMethod(
+                service, "executeDocumentWrite", params, request, Map.of("userId", "user-1"));
+
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo("success");
+        assertThat(result.getData()).containsEntry("documentId", "doc-1")
+                .containsEntry("writeMode", "append")
+                .containsEntry("result", "frontend-document-write")
+                .containsEntry("requiresFrontendWrite", true)
+                .containsEntry("persisted", false)
+                .containsEntry("content", "扩写内容");
+    }
+
+    @Test
+    void documentWriteParsesStructuredPayloadAndCleansMarkdown() {
+        AgentExecutionService service = new AgentExecutionService();
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        Map<String, Object> params = new HashMap<>();
+        params.put("documentId", "doc-1");
+        params.put("content", """
+                {"content":"**补充说明**\\n* 设 $P$ 为数域 $\\\\mathbb{C}$ 的子集。","writeMode":"insert","insertAfterText":"**1. 数域**","changeLog":"扩写数域","contentFormat":"plain_text"}
+                """);
+
+        AgentToolResult result = ReflectionTestUtils.invokeMethod(
+                service, "executeDocumentWrite", params, request, Map.of("userId", "user-1"));
+
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo("success");
+        assertThat(result.getData()).containsEntry("writeMode", "insert")
+                .containsEntry("insertAfterText", "1. 数域")
+                .containsEntry("changeLog", "扩写数域");
+        assertThat(result.getData().get("content").toString())
+                .doesNotContain("**")
+                .doesNotContain("$")
+                .contains("补充说明")
+                .contains("P 为数域 C 的子集");
     }
 
     @Test

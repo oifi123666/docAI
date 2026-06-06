@@ -23,7 +23,7 @@ public class InternalService {
     @Autowired
     private RequestUserContext requestUserContext;
 
-    private static final Set<String> DESTRUCTIVE_SKILLS = Set.of("file-delete", "file-restore", "file-version-switch");
+    private static final Set<String> DESTRUCTIVE_SKILLS = Set.of("file-restore", "file-version-switch");
 
     /**
      * 检查权限
@@ -87,12 +87,11 @@ public class InternalService {
         switch (skillName) {
             case "file-delete":
                 description.put("name", "文件删除");
-                description.put("description", "删除指定文件，支持确认删除和回收站");
+                description.put("description", "根据前端documentId或MinIO对象名删除文件并移入回收站");
                 description.put("parameters", Map.of(
                     "bucketName", "存储桶名称（可选）",
-                    "objectName", "对象名称（必填）",
-                    "requireConfirmation", "是否需要确认（可选）",
-                    "confirmationToken", "确认token（确认时使用）"
+                    "objectName", "对象名称（与documentId二选一）",
+                    "documentId", "前端业务文档ID（与objectName二选一）"
                 ));
                 break;
             case "file-download":

@@ -2,6 +2,7 @@ package com.javaee.aiservice.security;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
@@ -22,15 +23,19 @@ public class RequestUserContext {
 
     public Optional<String> getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated() || authentication.getPrincipal() == null) {
+        if (isAnonymous(authentication) || authentication.getPrincipal() == null) {
             return Optional.empty();
         }
-        return Optional.of(authentication.getPrincipal().toString());
+        String principal = authentication.getPrincipal().toString();
+        if ("anonymousUser".equalsIgnoreCase(principal) || "anonymous".equalsIgnoreCase(principal)) {
+            return Optional.empty();
+        }
+        return Optional.of(principal);
     }
 
     public String getCurrentRole() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getAuthorities() == null) {
+        if (isAnonymous(authentication) || authentication.getAuthorities() == null) {
             return "user";
         }
         return authentication.getAuthorities().stream()
@@ -43,7 +48,7 @@ public class RequestUserContext {
 
     public Set<String> getCurrentPermissionGroups() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getAuthorities() == null) {
+        if (isAnonymous(authentication) || authentication.getAuthorities() == null) {
             return Set.of();
         }
         return authentication.getAuthorities().stream()
@@ -55,5 +60,11 @@ public class RequestUserContext {
 
     public boolean isAdmin() {
         return "admin".equalsIgnoreCase(getCurrentRole());
+    }
+
+    private boolean isAnonymous(Authentication authentication) {
+        return authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken;
     }
 }

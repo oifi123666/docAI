@@ -23,6 +23,12 @@ public class DocumentVO {
 
     private String fileId;
 
+    private Long userId;
+
+    private String bucketName;
+
+    private String objectName;
+
     private String category;
 
     private List<String> tags;

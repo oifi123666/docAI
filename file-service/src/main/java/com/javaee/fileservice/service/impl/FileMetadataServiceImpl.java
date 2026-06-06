@@ -2,6 +2,7 @@ package com.javaee.fileservice.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.javaee.fileservice.config.FileStorageConfig;
 import com.javaee.fileservice.entity.FileMetadata;
 import com.javaee.fileservice.mapper.FileMetadataMapper;
 import com.javaee.fileservice.service.FileMetadataService;
@@ -23,10 +24,14 @@ public class FileMetadataServiceImpl implements FileMetadataService {
     @Autowired
     private FileMetadataMapper fileMetadataMapper;
 
+    @Autowired
+    private FileStorageConfig fileStorageConfig;
+
     @Override
     public FileMetadata getMetadata(String fileId) {
         try {
-            return fileMetadataMapper.selectByFileId(fileId);
+            FileMetadata metadata = fileMetadataMapper.selectByFileId(fileId);
+            return isCurrentBucketMetadata(metadata) ? metadata : null;
         } catch (Exception e) {
             System.out.println("获取元数据失败: " + e.getMessage());
             return null;
@@ -51,6 +56,7 @@ public class FileMetadataServiceImpl implements FileMetadataService {
             fileMetadata.setUpdateTime(LocalDateTime.now());
             QueryWrapper<FileMetadata> wrapper = new QueryWrapper<>();
             wrapper.eq("file_id", fileMetadata.getFileId());
+            applyCurrentBucketFilter(wrapper);
             fileMetadataMapper.update(fileMetadata, wrapper);
         } catch (Exception e) {
             System.out.println("更新元数据失败: " + e.getMessage());
@@ -62,6 +68,7 @@ public class FileMetadataServiceImpl implements FileMetadataService {
         try {
             QueryWrapper<FileMetadata> wrapper = new QueryWrapper<>();
             wrapper.eq("file_id", fileId);
+            applyCurrentBucketFilter(wrapper);
             fileMetadataMapper.delete(wrapper);
         } catch (Exception e) {
             System.out.println("删除元数据失败: " + e.getMessage());
@@ -73,6 +80,7 @@ public class FileMetadataServiceImpl implements FileMetadataService {
         try {
             Page<FileMetadata> pageObj = new Page<>(page, size);
             QueryWrapper<FileMetadata> wrapper = new QueryWrapper<>();
+            applyCurrentBucketFilter(wrapper);
             
             if (sortBy != null && !sortBy.isEmpty()) {
                 String dbColumn = camelToSnake(sortBy);
@@ -102,7 +110,8 @@ public class FileMetadataServiceImpl implements FileMetadataService {
         try {
             Page<FileMetadata> pageObj = new Page<>(page, size);
             QueryWrapper<FileMetadata> wrapper = new QueryWrapper<>();
-            wrapper.like("file_name", keyword).or().like("original_file_name", keyword);
+            applyCurrentBucketFilter(wrapper);
+            wrapper.and(w -> w.like("file_name", keyword).or().like("original_file_name", keyword));
             wrapper.orderByDesc("create_time");
             
             Page<FileMetadata> result = fileMetadataMapper.selectPage(pageObj, wrapper);
@@ -111,6 +120,22 @@ public class FileMetadataServiceImpl implements FileMetadataService {
             System.out.println("搜索文件失败: " + e.getMessage());
             return new ArrayList<>();
         }
+    }
+
+    private void applyCurrentBucketFilter(QueryWrapper<FileMetadata> wrapper) {
+        if ("minio".equals(fileStorageConfig.getStorageType())) {
+            wrapper.eq("bucket_name", fileStorageConfig.getBucketName());
+        }
+    }
+
+    private boolean isCurrentBucketMetadata(FileMetadata metadata) {
+        if (metadata == null) {
+            return false;
+        }
+        if (!"minio".equals(fileStorageConfig.getStorageType())) {
+            return true;
+        }
+        return fileStorageConfig.getBucketName().equals(metadata.getBucketName());
     }
 
     @Override

@@ -7,6 +7,12 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 1
+      idle-timeout: 30000
+      max-lifetime: 300000
+      connection-timeout: 10000
 
   cloud:
     compatibility-verifier:
@@ -77,3 +83,8 @@ minio:
 file:
   service:
     url: http://file:8082
+
+document:
+  schema:
+    auto-migration:
+      enabled: true

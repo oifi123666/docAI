@@ -3,6 +3,7 @@ package com.javaee.user.controller;
 import com.javaee.common.model.Result;
 import com.javaee.user.dto.LoginDTO;
 import com.javaee.user.dto.RegisterDTO;
+import com.javaee.user.entity.User;
 import com.javaee.user.service.UserService;
 import com.javaee.user.vo.LoginVO;
 import com.javaee.user.vo.UserVO;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -57,7 +59,7 @@ public class UserController {
      * @param id 用户ID
      * @return 用户信息
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     @Operation(summary = "获取用户信息", description = "根据用户ID获取用户详细信息")
     public Result<UserVO> getUserById(@Parameter(description = "用户ID") @PathVariable Long id) {
         log.info("获取用户信息: {}", id);
@@ -70,6 +72,19 @@ public class UserController {
      * @param refreshToken 刷新令牌
      * @return 新的访问令牌
      */
+    @GetMapping("/lookup")
+    @Operation(summary = "根据用户名查询用户", description = "用于文档协作授权时查找协作者")
+    public Result<UserVO> getUserByUsername(@Parameter(description = "用户名") @RequestParam String username) {
+        log.info("根据用户名查询用户: {}", username);
+        User user = userService.getUserByUsername(username);
+        if (user == null) {
+            throw new com.javaee.common.exception.BusinessException(com.javaee.common.constant.ErrorCodeEnum.USER_NOT_FOUND);
+        }
+        UserVO userVO = new UserVO();
+        BeanUtils.copyProperties(user, userVO);
+        return Result.success(userVO);
+    }
+
     @PostMapping("/refresh")
     @Operation(summary = "刷新令牌", description = "使用刷新令牌获取新的访问令牌")
     public Result<String> refreshToken(@Parameter(description = "刷新令牌") @RequestParam String refreshToken) {

@@ -4,10 +4,10 @@ import com.javaee.aiservice.dto.FileUploadDTO;
 import com.javaee.aiservice.security.BucketPermissionService;
 import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.vo.FileUploadVO;
+import com.javaee.common.utils.UserBucketUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,9 +36,6 @@ public class FileUploadService {
     @Autowired
     private BucketPermissionService bucketPermissionService;
 
-    @Value("${minio.bucket:documents}")
-    private String defaultBucket;
-
     /**
      * 文件上传功能
      * 功能说明：将本地文件上传至minIO服务器
@@ -53,7 +50,7 @@ public class FileUploadService {
 
         try {
             // 确定存储桶名称
-            String bucketName = dto.getBucketName() != null ? dto.getBucketName() : defaultBucket;
+            String bucketName = resolveBucketName(dto.getBucketName());
             bucketPermissionService.assertCanAccess(bucketName);
             
             // 确定对象名称（文件路径）
@@ -106,5 +103,12 @@ public class FileUploadService {
         }
         
         return datePath + "/" + uuid + extension;
+    }
+
+    private String resolveBucketName(String requestedBucketName) {
+        if (requestedBucketName != null && !requestedBucketName.isBlank()) {
+            return requestedBucketName;
+        }
+        return UserBucketUtils.bucketNameForUser(requestUserContext.getRequiredUserId());
     }
 }

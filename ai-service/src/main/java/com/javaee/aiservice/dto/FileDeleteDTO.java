@@ -20,9 +20,15 @@ public class FileDeleteDTO {
     
     /**
      * 对象名称（文件路径）
-     * 必填
+     * 与documentId二选一
      */
     private String objectName;
+
+    /**
+     * 前端业务文档ID。
+     * 传入后由AI服务向document-service查询真实MinIO bucket/objectName。
+     */
+    private String documentId;
     
     /**
      * 是否需要确认（true需要确认，false直接删除）

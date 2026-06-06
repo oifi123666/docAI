@@ -9,6 +9,7 @@ import com.javaee.documentservice.entity.Document;
 import com.javaee.documentservice.entity.DocumentVersion;
 import com.javaee.documentservice.mapper.DocumentMapper;
 import com.javaee.documentservice.mapper.DocumentVersionMapper;
+import com.javaee.documentservice.service.DocumentAccessService;
 import com.javaee.documentservice.service.DocumentContentService;
 import com.javaee.documentservice.service.DocumentService;
 import com.javaee.documentservice.util.DocumentParserUtil;
@@ -48,6 +49,9 @@ public class DocumentServiceImpl implements DocumentService {
     private DocumentContentService documentContentService;
 
     @Autowired
+    private DocumentAccessService documentAccessService;
+
+    @Autowired
     private FileServiceClient fileServiceClient;
 
     @Autowired
@@ -70,6 +74,7 @@ public class DocumentServiceImpl implements DocumentService {
         document.setCategory(dto.getCategory());
         document.setTags(convertListToJson(dto.getTags()));
         document.setUserId(userId);
+        document.setBucketName(documentContentService.getBucketName(userId));
         document.setStatus("active");
         document.setVersion(1);
         document.setCreatedBy(String.valueOf(userId));
@@ -77,6 +82,9 @@ public class DocumentServiceImpl implements DocumentService {
         document.setUpdateTime(LocalDateTime.now());
 
         documentMapper.insert(document);
+        document.setObjectName(documentContentService.getObjectName(document.getId()));
+        documentMapper.updateById(document);
+        documentAccessService.grantOwnerAccess(document.getId(), document.getBucketName(), userId);
 
         // 通过fileId从file-service获取文件内容并解析
         String content = "";
@@ -98,18 +106,24 @@ public class DocumentServiceImpl implements DocumentService {
                             dto.getFileId(), fileName, content.length());
                 }
             } catch (Exception e) {
-                log.error("从file-service获取文件失败: fileId={}", dto.getFileId(), e);
-                throw new BusinessException("获取文件内容失败: " + e.getMessage());
+                log.warn("文件已上传，但文档内容解析失败，将仅创建文档元数据: fileId={}, error={}",
+                        dto.getFileId(), e.getMessage(), e);
             }
         }
 
         // 将解析后的内容存储到MinIO
         if (content != null && !content.isEmpty()) {
-            documentContentService.saveContent(document.getId(), content);
-            
-            // 设置文档摘要和关键词
-            document.setSummary(DocumentParserUtil.getSummary(content, 200));
-            documentMapper.updateById(document);
+            try {
+                documentContentService.saveContent(document.getId(), storageBucketName(document), content);
+
+                // 设置文档摘要和关键词
+                document.setSummary(DocumentParserUtil.getSummary(content, 200));
+                documentMapper.updateById(document);
+            } catch (Exception e) {
+                log.warn("文档内容保存失败，将保留文档元数据: documentId={}, error={}",
+                        document.getId(), e.getMessage(), e);
+                content = "";
+            }
         }
 
         saveVersion(document, "初始版本", content);
@@ -136,21 +150,29 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         // 获取当前内容用于保存版本
-        String currentContent = documentContentService.getContent(id);
+        documentAccessService.assertCanWrite(document, userId);
+
+        String currentContent = documentContentService.getContent(id, storageBucketName(document));
 
         saveVersion(document, dto.getChangeLog(), currentContent);
 
-        document.setTitle(dto.getTitle());
-        document.setCategory(dto.getCategory());
-        document.setTags(convertListToJson(dto.getTags()));
+        if (dto.getTitle() != null && !dto.getTitle().isBlank()) {
+            document.setTitle(dto.getTitle());
+        }
+        if (dto.getCategory() != null) {
+            document.setCategory(dto.getCategory());
+        }
+        if (dto.getTags() != null) {
+            document.setTags(convertListToJson(dto.getTags()));
+        }
         document.setVersion(document.getVersion() + 1);
         document.setUpdateTime(LocalDateTime.now());
 
         documentMapper.updateById(document);
 
         // 更新MinIO中的文档内容
-        if (dto.getContent() != null && !dto.getContent().isEmpty()) {
-            documentContentService.updateContent(id, dto.getContent());
+        if (dto.getContent() != null) {
+            documentContentService.updateContent(id, storageBucketName(document), dto.getContent());
             
             // 更新摘要
             document.setSummary(DocumentParserUtil.getSummary(dto.getContent(), 200));
@@ -175,13 +197,27 @@ public class DocumentServiceImpl implements DocumentService {
         if (document == null) {
             throw new BusinessException("文档不存在");
         }
+        documentAccessService.assertCanWrite(document, userId);
 
         document.setStatus("deleted");
         document.setUpdateTime(LocalDateTime.now());
         documentMapper.updateById(document);
 
         // 删除MinIO中的文档内容
-        documentContentService.deleteContent(id);
+        documentContentService.deleteContent(id, storageBucketName(document));
+    }
+
+    @Override
+    @Transactional
+    public void grantAccess(String id, Long collaboratorUserId, String role, Long operatorUserId) {
+        Document document = documentMapper.selectById(id);
+        if (document == null) {
+            throw new BusinessException("文档不存在");
+        }
+        if (!documentAccessService.isOwner(document, operatorUserId)) {
+            throw new BusinessException("只有文档创建者可以授权协作者");
+        }
+        documentAccessService.grantAccess(id, storageBucketName(document), collaboratorUserId, role);
     }
 
     /**
@@ -191,18 +227,29 @@ public class DocumentServiceImpl implements DocumentService {
      * @return 文档VO
      */
     @Override
-    public DocumentVO getById(String id) {
+    public DocumentVO getById(String id, Long userId) {
         Document document = documentMapper.selectById(id);
         if (document == null) {
             throw new BusinessException("文档不存在");
         }
+        documentAccessService.assertCanRead(document, userId);
         DocumentVO vo = convertToVO(document);
         
         // 从MinIO获取文档内容
-        String content = documentContentService.getContent(id);
+        String content = documentContentService.getContent(id, storageBucketName(document));
         vo.setContent(content);
         
         return vo;
+    }
+
+    @Override
+    public DocumentVO getStorageLocation(String id, Long userId) {
+        Document document = documentMapper.selectById(id);
+        if (document == null) {
+            throw new BusinessException("文档不存在");
+        }
+        documentAccessService.assertCanWrite(document, userId);
+        return convertToVOWithoutContent(document);
     }
 
     /**
@@ -212,7 +259,7 @@ public class DocumentServiceImpl implements DocumentService {
      */
     @Override
     public List<DocumentVO> getByUserId(Long userId) {
-        List<Document> documents = documentMapper.selectByUserId(userId);
+        List<Document> documents = documentMapper.selectAccessibleByUserId(userId);
         return documents.stream().map(this::convertToVOWithoutContent).collect(Collectors.toList());
     }
 
@@ -223,17 +270,8 @@ public class DocumentServiceImpl implements DocumentService {
      * @return 文档VO列表（不包含内容，如需内容需单独调用getById）
      */
     @Override
-    public List<DocumentVO> search(DocumentQueryDTO dto) {
-        List<Document> documents;
-
-        if (dto.getKeyword() != null && !dto.getKeyword().isEmpty()) {
-            documents = documentMapper.searchByKeyword(dto.getKeyword());
-        } else if (dto.getCategory() != null && !dto.getCategory().isEmpty()) {
-            documents = documentMapper.selectByCategory(dto.getCategory());
-        } else {
-            documents = documentMapper.selectByStatus("active");
-        }
-
+    public List<DocumentVO> search(DocumentQueryDTO dto, Long userId) {
+        List<Document> documents = documentMapper.searchAccessible(userId, dto.getKeyword(), dto.getCategory());
         return documents.stream().map(this::convertToVOWithoutContent).collect(Collectors.toList());
     }
 
@@ -243,7 +281,12 @@ public class DocumentServiceImpl implements DocumentService {
      * @return 文档版本列表（按版本号降序）
      */
     @Override
-    public List<DocumentVersion> getVersions(String documentId) {
+    public List<DocumentVersion> getVersions(String documentId, Long userId) {
+        Document document = documentMapper.selectById(documentId);
+        if (document == null) {
+            throw new BusinessException("文档不存在");
+        }
+        documentAccessService.assertCanRead(document, userId);
         return documentVersionMapper.selectByDocumentId(documentId);
     }
 
@@ -262,6 +305,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (document == null) {
             throw new BusinessException("文档不存在");
         }
+        documentAccessService.assertCanWrite(document, userId);
 
         DocumentVersion version = documentVersionMapper.selectByDocumentIdAndVersion(documentId, versionNumber);
         if (version == null) {
@@ -269,7 +313,7 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         // 获取当前内容用于保存版本
-        String currentContent = documentContentService.getContent(documentId);
+        String currentContent = documentContentService.getContent(documentId, storageBucketName(document));
         saveVersion(document, "恢复到版本" + versionNumber, currentContent);
 
         document.setTitle(version.getTitle());
@@ -281,7 +325,7 @@ public class DocumentServiceImpl implements DocumentService {
         documentMapper.updateById(document);
 
         // 恢复MinIO中的文档内容
-        documentContentService.updateContent(documentId, version.getContent());
+        documentContentService.updateContent(documentId, storageBucketName(document), version.getContent());
 
         DocumentVO vo = convertToVO(document);
         // 从MinIO获取恢复后的内容
@@ -322,6 +366,9 @@ public class DocumentServiceImpl implements DocumentService {
         vo.setSummary(document.getSummary());
         vo.setKeywords(convertJsonToList(document.getKeywords()));
         vo.setFileId(document.getFileId());
+        vo.setUserId(document.getUserId());
+        vo.setBucketName(storageBucketName(document));
+        vo.setObjectName(storageObjectName(document));
         vo.setCategory(document.getCategory());
         vo.setTags(convertJsonToList(document.getTags()));
         vo.setVersion(document.getVersion());
@@ -339,6 +386,20 @@ public class DocumentServiceImpl implements DocumentService {
      */
     private DocumentVO convertToVOWithoutContent(Document document) {
         return convertToVO(document);
+    }
+
+    private String storageBucketName(Document document) {
+        if (document.getBucketName() != null && !document.getBucketName().isBlank()) {
+            return document.getBucketName();
+        }
+        return documentContentService.getBucketName(document.getUserId());
+    }
+
+    private String storageObjectName(Document document) {
+        if (document.getObjectName() != null && !document.getObjectName().isBlank()) {
+            return document.getObjectName();
+        }
+        return documentContentService.getObjectName(document.getId());
     }
 
     /**
