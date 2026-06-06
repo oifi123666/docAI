@@ -338,6 +338,10 @@ public class AgentExecutionService {
             if (iteration >= maxIterations) {
                 if (reflection != null && !reflection.isComplete()) {
                     stoppedReason = "max_iterations";
+                } else if (!"tool_error".equals(stoppedReason)
+                        && !"dependency_failed".equals(stoppedReason)
+                        && !"tool_call_limit".equals(stoppedReason)) {
+                    stoppedReason = "completed";
                 }
                 break;
             }
@@ -357,8 +361,8 @@ public class AgentExecutionService {
                 }
                 reflectionPlan = normalizePlan(reflection.getRevisedPlan(), request, context);
                 if (reflectionPlan.isEmpty()) {
-                    stoppedReason = "reflection_no_plan";
-                    break;
+                    stoppedReason = "follow_up_replan";
+                    continue;
                 }
                 stoppedReason = "reflection_replan";
                 continue;
@@ -381,6 +385,7 @@ public class AgentExecutionService {
         contextManager.updateContext(conversationId, context);
 
         Map<String, Object> pendingApproval = requiresAction ? pendingApprovalFrom(plan, toolResults) : Map.of();
+        Map<String, Object> pendingUserInput = requiresAction ? pendingUserInputFrom(plan, toolResults, traceId) : Map.of();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", requiresAction ? "action_required" : resolveStatus(toolResults));
         response.put("traceId", traceId);
@@ -400,6 +405,8 @@ public class AgentExecutionService {
         response.put("userId", userId);
         if (!pendingApproval.isEmpty()) {
             response.put("pendingApproval", pendingApproval);
+        } else if (!pendingUserInput.isEmpty()) {
+            response.put("pendingUserInput", pendingUserInput);
         }
         taskRegistry.save(traceId, response);
         if (requiresAction) {
@@ -501,6 +508,34 @@ public class AgentExecutionService {
         pending.put("toolName", last.getToolName());
         pending.put("params", step == null ? last.getData().get("params") : step.getParams());
         pending.put("message", last.getMessage());
+        pending.put("createdAt", System.currentTimeMillis());
+        return pending;
+    }
+
+    private Map<String, Object> pendingUserInputFrom(List<AgentPlanStep> plan,
+                                                     List<AgentToolResult> toolResults,
+                                                     String traceId) {
+        if (toolResults == null || toolResults.isEmpty()) {
+            return Map.of();
+        }
+        AgentToolResult last = toolResults.get(toolResults.size() - 1);
+        if (!last.isRequiresAction() || last.getData() == null || last.getData().containsKey("agentApprovalToken")) {
+            return Map.of();
+        }
+        AgentPlanStep step = findStep(plan, last.getStepId());
+        Map<String, Object> pending = new LinkedHashMap<>();
+        pending.put("interactionType", valueOrDefault(asString(last.getData().get("interactionType")), "user_input"));
+        pending.put("resumeMode", "continue_trace");
+        pending.put("traceId", traceId);
+        pending.put("stepId", last.getStepId());
+        pending.put("toolName", last.getToolName());
+        pending.put("question", firstNonBlank(asString(last.getData().get("question")), last.getMessage()));
+        pending.put("missingParameters", last.getData().getOrDefault("missingParameters", List.of()));
+        pending.put("invalidParameters", last.getData().getOrDefault("invalidParameters", Map.of()));
+        pending.put("missingFields", last.getData().getOrDefault("missingFields", List.of()));
+        pending.put("options", last.getData().getOrDefault("options", List.of()));
+        pending.put("params", step == null ? Map.of() : step.getParams());
+        pending.put("resumeEndpoint", "/api/ai/agent/tasks/" + traceId + "/continue");
         pending.put("createdAt", System.currentTimeMillis());
         return pending;
     }
@@ -812,6 +847,9 @@ public class AgentExecutionService {
             return null;
         }
         AgentReflection reflection = reflectionService.reflect(request, plan, results, context, iteration, maxIterations);
+        if (reflection == null) {
+            return null;
+        }
         publishTaskEvent("reflection_finished", traceId, userId,
                 reflection.isComplete() ? "complete" : "needs_more_work",
                 progressOf(iteration, maxIterations),
@@ -827,8 +865,10 @@ public class AgentExecutionService {
         return """
                 你是DocAI的Agent执行器，正在进行第%s轮补充规划。请只输出JSON数组，不要输出解释、Markdown或代码块。
                 如果任务已经可以回答，请输出空数组 []。
-                如果还需要工具，请输出最多3个后续步骤，每个元素包含: id, description, toolName, params, reasoning。
+                如果还需要工具，请输出最多3个后续步骤。
+                %s
                 只能使用工具列表中的toolName；不要重复已经成功执行且参数相同的工具。
+                如果后续步骤要消费前面步骤的结果，请使用 ${steps.<id>.data.<key>} 或 ${steps.<id>.observation}，并在 dependsOn 中写入对应 id。
 
                 工具列表:
                 %s
@@ -844,7 +884,7 @@ public class AgentExecutionService {
 
                 当前上下文:
                 %s
-                """.formatted(iteration, toolCatalog(), request.getTask(), safeJson(previousPlan),
+                """.formatted(iteration, plannerJsonContract(), toolCatalog(), request.getTask(), safeJson(previousPlan),
                 safeJson(previousResults), safeJson(context));
     }
 
@@ -1005,10 +1045,25 @@ public class AgentExecutionService {
         return fallbackPlan(request, context);
     }
 
+    private String plannerJsonContract() {
+        return """
+                计划JSON字段契约:
+                - 必填字段: id, description, toolName, params, reasoning。
+                - 可选字段: dependsOn, successCriteria, retryPolicy, maxRetries, riskLevel。
+                - dependsOn 必须引用同一个计划中更早步骤的 id，例如 ["search"]；后续步骤依赖前序工具结果时必须填写。
+                - successCriteria 用于声明工具成功判据，可写 contains:关键词、data.<key>、data.<key>=value，多条用分号分隔。
+                - retryPolicy 只能使用 none 或 exponential；危险操作使用 none，普通查询/生成可使用 exponential。
+                - maxRetries 是整数，普通工具建议 1，危险操作必须 0。
+                - 后续步骤需要引用前序结果时，params 里可以使用占位符: ${task}, ${context.<key>}, ${steps.<id>.observation}, ${steps.<id>.data.<key>}。
+                - 使用 ${steps.<id>.data.<key>} 时，该步骤必须在 dependsOn 中依赖产生结果的 <id>。
+                - RAG 工具的 rerankStrategy 只是候选片段重排序策略，允许 HYBRID/VECTOR/BM25；通常省略或用 HYBRID，不要把它当成业务检索策略。
+                """;
+    }
+
     private String buildPlannerPrompt(AgentExecutionRequest request, Map<String, Object> context) {
         return """
                 你是DocAI的任务规划器。请只输出JSON数组，不要输出解释、Markdown或代码块。
-                每个数组元素包含: id, description, toolName, params, reasoning。
+                %s
                 只能从工具列表中选择toolName；如不需要工具，使用direct-answer。
                 多步任务可以输出多个步骤，但不要超过5步；参数必须来自用户任务或上下文，不确定时先用direct-answer询问澄清。
                 对危险操作(file-restore,file-version-switch)必须等待用户确认；file-delete 在前端已确认且 documentId 或 objectName 明确时可执行永久删除，不进入回收站。不要规划文件上传，文件上传必须由用户通过页面或上传接口自行完成。
@@ -1022,7 +1077,7 @@ public class AgentExecutionService {
 
                 上下文:
                 %s
-                """.formatted(toolCatalog(), request.getTask(), safeJson(context));
+                """.formatted(plannerJsonContract(), toolCatalog(), request.getTask(), safeJson(context));
     }
 
     private String toolCatalog() {
@@ -1400,14 +1455,14 @@ public class AgentExecutionService {
             case "rag-answer" -> {
                 params.putIfAbsent("question", request.getTask());
                 params.putIfAbsent("topK", 3);
-                params.putIfAbsent("strategy", "HYBRID");
+                params.putIfAbsent("rerankStrategy", firstNonBlank(asString(params.get("strategy")), "HYBRID"));
                 params.putIfAbsent("userId", context.get("userId"));
                 params.putIfAbsent("knowledgeBaseId", context.getOrDefault("knowledgeBaseId", "default"));
             }
             case "rag-search" -> {
                 params.putIfAbsent("query", request.getTask());
                 params.putIfAbsent("topK", 5);
-                params.putIfAbsent("strategy", "HYBRID");
+                params.putIfAbsent("rerankStrategy", firstNonBlank(asString(params.get("strategy")), "HYBRID"));
                 params.putIfAbsent("userId", context.get("userId"));
                 params.putIfAbsent("knowledgeBaseId", context.getOrDefault("knowledgeBaseId", "default"));
             }
@@ -1591,6 +1646,9 @@ public class AgentExecutionService {
             data.put("parameterSchema", definition.getParameterSchema());
             data.put("question", "工具 file-delete 需要提供前端documentId或MinIO对象名称objectName");
             data.put("nextStep", "请从前端上下文传入 documentId，或直接提供 bucketName/objectName 后重试。");
+            data.put("interactionType", "user_input");
+            data.put("resumeMode", "continue_trace");
+            data.put("resumeEndpointTemplate", "/api/ai/agent/tasks/{traceId}/continue");
             return AgentToolResult.actionRequired(definition.getName(),
                     "请提供前端documentId或MinIO对象名称objectName", data);
         }
@@ -1659,6 +1717,9 @@ public class AgentExecutionService {
         data.put("parameterSchema", definition.getParameterSchema());
         data.put("question", question.toString());
         data.put("nextStep", "请补齐缺失或类型不正确的参数后，将参数放入 context 或工具 params 中重试。");
+        data.put("interactionType", "user_input");
+        data.put("resumeMode", "continue_trace");
+        data.put("resumeEndpointTemplate", "/api/ai/agent/tasks/{traceId}/continue");
         return AgentToolResult.actionRequired(definition.getName(), question.toString(), data);
     }
 
@@ -1725,13 +1786,17 @@ public class AgentExecutionService {
         if (!isBlank(options)) {
             data.put("options", List.of(options.split("[;；]")));
         }
+        data.put("interactionType", "user_input");
+        data.put("resumeMode", "continue_trace");
+        data.put("resumeEndpointTemplate", "/api/ai/agent/tasks/{traceId}/continue");
         return AgentToolResult.actionRequired("ask-user", question, data);
     }
 
     private AgentToolResult executeRagAnswer(Map<String, Object> params, String model) {
         String question = firstNonBlank(asString(params.get("question")), asString(params.get("query")));
         List<Map<String, Object>> results = searchKnowledge(question, intValue(params.get("topK"), 3),
-                asString(params.get("strategy")), asString(params.get("userId")), asString(params.get("knowledgeBaseId")));
+                firstNonBlank(asString(params.get("rerankStrategy")), asString(params.get("strategy"))),
+                asString(params.get("userId")), asString(params.get("knowledgeBaseId")));
         String context = buildKnowledgeContext(results);
         String prompt = promptEngineeringService.createRagAnswerPrompt(question, context);
         String answer = chatService.callChatApiWithModelCode(prompt, model);
@@ -1746,7 +1811,8 @@ public class AgentExecutionService {
     private AgentToolResult executeRagSearch(Map<String, Object> params) {
         String query = firstNonBlank(asString(params.get("query")), asString(params.get("question")));
         List<Map<String, Object>> results = searchKnowledge(query, intValue(params.get("topK"), 5),
-                asString(params.get("strategy")), asString(params.get("userId")), asString(params.get("knowledgeBaseId")));
+                firstNonBlank(asString(params.get("rerankStrategy")), asString(params.get("strategy"))),
+                asString(params.get("userId")), asString(params.get("knowledgeBaseId")));
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("query", query);
         data.put("results", results);
@@ -2079,6 +2145,9 @@ public class AgentExecutionService {
         data.put("params", step.getParams());
         data.put("approvalReason", result.name());
         data.put("nextStep", "确认危险操作后，将 agentApprovalToken 原样带回本接口重试。");
+        data.put("interactionType", "approval");
+        data.put("resumeMode", "approval_token");
+        data.put("resumeEndpoint", "/api/ai/agent/approvals/confirm");
         String message = switch (result) {
             case MISSING -> "危险操作需要服务端二次确认";
             case EXPIRED_OR_USED -> "审批令牌已过期或已使用，请重新确认";

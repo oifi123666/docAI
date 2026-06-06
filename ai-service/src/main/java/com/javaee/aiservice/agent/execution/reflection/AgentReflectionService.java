@@ -84,9 +84,15 @@ public class AgentReflectionService {
                   ]
                 }
 
+                revisedPlan步骤字段:
+                - 必填: id, description, toolName, params, reasoning。
+                - 可选: dependsOn, successCriteria, retryPolicy, maxRetries, riskLevel。
+                - 后续步骤引用前序结果时，params 可使用 ${steps.<id>.data.<key>} 或 ${steps.<id>.observation}，并在 dependsOn 中填写对应 id。
+
                 反思规则:
                 - 工具结果已经足够回答用户任务时，complete=true，continueExecution=false，revisedPlan=[]。
                 - 需要继续调用工具时，continueExecution=true，requiresReplan=true，并给出最多3个revisedPlan步骤。
+                - 如果判断必须继续但不确定具体工具步骤，可以保持 continueExecution=true、requiresReplan=true、revisedPlan=[]，执行器会交给补充规划器。
                 - 参数缺失或需要用户决定时，shouldAskUser=true，并优先使用ask-user工具。
                 - 不要重复已经成功执行且参数相同的工具。
                 - 只能使用工具列表中的toolName。
@@ -167,7 +173,6 @@ public class AgentReflectionService {
         reflection.setRevisedPlan(filterUsablePlan(reflection.getRevisedPlan()));
         if (reflection.isRequiresReplan() && reflection.isContinueExecution() && reflection.getRevisedPlan().isEmpty()) {
             reflection.getIssues().add("反思要求继续执行，但没有给出可用 revisedPlan");
-            reflection.setContinueExecution(false);
         }
     }
 
@@ -236,6 +241,20 @@ public class AgentReflectionService {
             step.setSuccessCriteria(asString(map.get("successCriteria")));
             step.setRetryPolicy(firstNonBlank(asString(map.get("retryPolicy")), "exponential"));
             step.setMaxRetries(intValue(map.get("maxRetries"), 1));
+            Object dependsOn = map.get("dependsOn");
+            if (dependsOn instanceof List<?> dependsOnList) {
+                List<String> ids = new ArrayList<>();
+                for (Object dependency : dependsOnList) {
+                    if (dependency != null && !isBlank(dependency.toString())) {
+                        ids.add(dependency.toString());
+                    }
+                }
+                step.setDependsOn(ids);
+            }
+            String riskLevel = asString(map.get("riskLevel"));
+            if (!isBlank(riskLevel)) {
+                step.setRiskLevel(riskLevel);
+            }
             Object params = map.get("params");
             if (params instanceof Map<?, ?> paramsMap) {
                 step.setParams(toStringObjectMap(paramsMap));

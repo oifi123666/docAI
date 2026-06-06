@@ -25,10 +25,12 @@ public class AgentToolRegistry {
                         "options", "可供用户选择的候选项，分号分隔，可选"),
                 Set.of("question"), false, "interaction", true);
         register("rag-answer", "检索知识库并调用模型生成最终问答答案。",
-                Map.of("question", "用户问题", "topK", "检索条数，默认3", "strategy", "重排序策略，默认HYBRID"),
+                Map.of("question", "用户问题", "topK", "检索条数，默认3",
+                        "rerankStrategy", "重排序策略，默认HYBRID；只影响候选片段排序，不代表业务检索策略"),
                 Set.of("question"), false, "rag", false);
         register("rag-search", "只检索知识库，返回相关片段和来源，不生成答案。",
-                Map.of("query", "查询词", "topK", "检索条数，默认5", "strategy", "重排序策略，默认HYBRID"),
+                Map.of("query", "查询词", "topK", "检索条数，默认5",
+                        "rerankStrategy", "重排序策略，默认HYBRID；只影响候选片段排序，不代表业务检索策略"),
                 Set.of("query"), false, "rag", false);
         register("text-summarize", "对文本进行摘要。",
                 Map.of("content", "待摘要文本", "maxLength", "摘要最大长度，默认300", "model", "可选模型代码"),
@@ -122,7 +124,7 @@ public class AgentToolRegistry {
 
     private List<Object> allowedValues(String parameterName) {
         return switch (parameterName) {
-            case "strategy" -> List.of("HYBRID", "VECTOR", "BM25");
+            case "rerankStrategy" -> List.of("HYBRID", "VECTOR", "BM25");
             case "writeMode" -> List.of("overwrite", "append", "insert", "replace-selection");
             default -> null;
         };
@@ -164,7 +166,7 @@ public class AgentToolRegistry {
             case "topK" -> 5;
             case "count" -> 8;
             case "maxLength" -> 300;
-            case "strategy" -> "HYBRID";
+            case "rerankStrategy" -> "HYBRID";
             case "requireConfirmation" -> true;
             case "writeMode" -> "append";
             case "contentType" -> "text/plain";

@@ -6,6 +6,8 @@ import com.javaee.aiservice.agent.execution.model.AgentExecutionRequest;
 import com.javaee.aiservice.agent.execution.model.AgentPlanStep;
 import com.javaee.aiservice.agent.execution.model.AgentStepStatus;
 import com.javaee.aiservice.agent.execution.model.AgentToolResult;
+import com.javaee.aiservice.agent.execution.reflection.AgentReflection;
+import com.javaee.aiservice.agent.execution.reflection.AgentReflectionService;
 import com.javaee.aiservice.agent.execution.task.AgentTaskRegistry;
 import com.javaee.aiservice.agent.execution.tool.AgentToolDefinition;
 import com.javaee.aiservice.agent.execution.tool.AgentToolParameterDefinition;
@@ -14,6 +16,8 @@ import com.javaee.aiservice.conversation.ContextManager;
 import com.javaee.aiservice.conversation.ConversationManager;
 import com.javaee.aiservice.dto.FileDeleteDTO;
 import com.javaee.aiservice.internal.InternalService;
+import com.javaee.aiservice.rag.KnowledgeBase;
+import com.javaee.aiservice.rag.Reranker;
 import com.javaee.aiservice.security.RequestUserContext;
 import com.javaee.aiservice.service.FileDeleteService;
 import com.javaee.aiservice.vo.FileDeleteVO;
@@ -115,6 +119,75 @@ class AgentExecutionServiceTest {
         @SuppressWarnings("unchecked")
         List<String> missingParameters = (List<String>) toolResults.get(0).getData().get("missingParameters");
         assertThat(missingParameters).containsExactly("documentId/objectName");
+        assertThat(toolResults.get(0).getData())
+                .containsEntry("interactionType", "user_input")
+                .containsEntry("resumeMode", "continue_trace");
+        assertThat(response).containsKey("pendingUserInput");
+        assertThat(response).doesNotContainKey("pendingApproval");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void continueTraceResumesMissingParameterStepWithoutApprovalToken() {
+        AgentExecutionService service = new AgentExecutionService();
+        AgentToolRegistry registry = new AgentToolRegistry();
+        ChatService chatService = mock(ChatService.class);
+        ConversationManager conversationManager = mock(ConversationManager.class);
+        ContextManager contextManager = mock(ContextManager.class);
+        InternalService internalService = mock(InternalService.class);
+        FileDeleteService fileDeleteService = mock(FileDeleteService.class);
+        RequestUserContext requestUserContext = mock(RequestUserContext.class);
+        AgentTaskRegistry taskRegistry = new AgentTaskRegistry();
+
+        when(requestUserContext.getRequiredUserId()).thenReturn("user-1");
+        when(requestUserContext.getCurrentRole()).thenReturn("USER");
+        when(conversationManager.createConversation("user-1")).thenReturn("conv-1");
+        when(contextManager.getContext("conv-1")).thenReturn(new HashMap<>());
+        when(chatService.callChatApiWithModelCode(any(), any())).thenThrow(new RuntimeException("planner unavailable"));
+        when(internalService.hasPermission(eq("file-delete"), any())).thenReturn(true);
+        when(fileDeleteService.deleteFile(any(FileDeleteDTO.class), eq("agent-approved:user-1")))
+                .thenReturn(new FileDeleteVO("deleted", null, null, null, "删除成功"));
+        doNothing().when(conversationManager).addMessageForUser(eq("conv-1"), eq("user-1"), any(), any());
+        doNothing().when(contextManager).updateContext(eq("conv-1"), any());
+        doNothing().when(internalService).logAudit(any(), any(), any());
+
+        ReflectionTestUtils.setField(service, "chatService", chatService);
+        ReflectionTestUtils.setField(service, "conversationManager", conversationManager);
+        ReflectionTestUtils.setField(service, "contextManager", contextManager);
+        ReflectionTestUtils.setField(service, "internalService", internalService);
+        ReflectionTestUtils.setField(service, "toolRegistry", registry);
+        ReflectionTestUtils.setField(service, "fileDeleteService", fileDeleteService);
+        ReflectionTestUtils.setField(service, "requestUserContext", requestUserContext);
+        ReflectionTestUtils.setField(service, "taskRegistry", taskRegistry);
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("删除文件");
+        request.setContext(Map.of());
+        request.setReflectionEnabled(false);
+        request.setAutoReplan(false);
+
+        Map<String, Object> first = service.execute(request);
+        assertThat(first.get("status")).isEqualTo("action_required");
+        assertThat(first).containsKey("pendingUserInput");
+        assertThat(first).doesNotContainKey("pendingApproval");
+
+        AgentExecutionRequest resumed = new AgentExecutionRequest();
+        resumed.setTask("文件是 a.txt");
+        resumed.setContinueTraceId(first.get("traceId").toString());
+        resumed.setContext(Map.of("objectName", "a.txt", "bucketName", "doc-ai"));
+        resumed.setReflectionEnabled(false);
+        resumed.setAutoReplan(false);
+
+        Map<String, Object> result = service.execute(resumed);
+
+        assertThat(result.get("status")).isEqualTo("success");
+        assertThat(result).doesNotContainKey("pendingUserInput");
+        List<AgentToolResult> toolResults = (List<AgentToolResult>) result.get("toolResults");
+        assertThat(toolResults).extracting(AgentToolResult::getToolName).containsExactly("file-delete");
+        assertThat(toolResults).extracting(AgentToolResult::getStatus).containsExactly("success");
+        verify(fileDeleteService).deleteFile(
+                argThat(dto -> "a.txt".equals(dto.getObjectName()) && "doc-ai".equals(dto.getBucketName())),
+                eq("agent-approved:user-1"));
     }
 
     @SuppressWarnings("unchecked")
@@ -252,6 +325,70 @@ class AgentExecutionServiceTest {
                 .containsExactly("success", "success");
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void reflectionWithoutRevisedPlanFallsBackToFollowUpPlanner() {
+        AgentExecutionService service = new AgentExecutionService();
+        AgentToolRegistry registry = new AgentToolRegistry();
+        ChatService chatService = mock(ChatService.class);
+        ConversationManager conversationManager = mock(ConversationManager.class);
+        ContextManager contextManager = mock(ContextManager.class);
+        InternalService internalService = mock(InternalService.class);
+        RequestUserContext requestUserContext = mock(RequestUserContext.class);
+        AgentReflectionService reflectionService = mock(AgentReflectionService.class);
+        KnowledgeBase knowledgeBase = mock(KnowledgeBase.class);
+
+        when(requestUserContext.getRequiredUserId()).thenReturn("user-1");
+        when(requestUserContext.getCurrentRole()).thenReturn("USER");
+        when(conversationManager.createConversation("user-1")).thenReturn("conv-1");
+        when(contextManager.getContext("conv-1")).thenReturn(new HashMap<>());
+        when(internalService.hasPermission(any(), any())).thenReturn(true);
+        when(knowledgeBase.hybridSearchWithRerank(eq("查找合同"), eq(5), eq(Reranker.RerankStrategy.HYBRID),
+                eq("user-1"), eq("default"))).thenReturn(List.of(Map.of("id", "doc-1", "content", "合同片段")));
+        when(chatService.callChatApiWithModelCode(any(), any()))
+                .thenReturn("""
+                        [{"id":"search","description":"先检索","toolName":"rag-search","params":{"query":"查找合同"}}]
+                        """, """
+                        [{"id":"answer","description":"根据检索结果回答","toolName":"direct-answer","params":{"question":"${steps.search.data.results}"}}]
+                        """, "合同结果");
+        AgentReflection reflection = new AgentReflection();
+        reflection.setComplete(false);
+        reflection.setContinueExecution(true);
+        reflection.setRequiresReplan(true);
+        reflection.setReason("需要根据检索结果继续回答，但未提供 revisedPlan");
+        when(reflectionService.reflect(any(), any(), any(), any(), eq(1), eq(2))).thenReturn(reflection);
+
+        doNothing().when(conversationManager).addMessageForUser(eq("conv-1"), eq("user-1"), any(), any());
+        doNothing().when(contextManager).updateContext(eq("conv-1"), any());
+        doNothing().when(internalService).logAudit(any(), any(), any());
+
+        ReflectionTestUtils.setField(service, "chatService", chatService);
+        ReflectionTestUtils.setField(service, "conversationManager", conversationManager);
+        ReflectionTestUtils.setField(service, "contextManager", contextManager);
+        ReflectionTestUtils.setField(service, "internalService", internalService);
+        ReflectionTestUtils.setField(service, "toolRegistry", registry);
+        ReflectionTestUtils.setField(service, "requestUserContext", requestUserContext);
+        ReflectionTestUtils.setField(service, "reflectionService", reflectionService);
+        ReflectionTestUtils.setField(service, "knowledgeBase", knowledgeBase);
+        ReflectionTestUtils.setField(service, "taskRegistry", new AgentTaskRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("查找合同");
+        request.setContext(Map.of("userId", "user-1"));
+        request.setReflectionEnabled(true);
+        request.setAutoReplan(true);
+        request.setMaxIterations(2);
+
+        Map<String, Object> response = service.execute(request);
+
+        assertThat(response.get("status")).isEqualTo("success");
+        assertThat(response.get("answer")).isEqualTo("合同结果");
+        assertThat(response.get("stoppedReason")).isEqualTo("completed");
+        List<AgentToolResult> toolResults = (List<AgentToolResult>) response.get("toolResults");
+        assertThat(toolResults).extracting(AgentToolResult::getToolName)
+                .containsExactly("rag-search", "direct-answer");
+    }
+
     @Test
     void toolRegistryExposesAskUserToolForClarification() {
         AgentToolRegistry registry = new AgentToolRegistry();
@@ -301,11 +438,33 @@ class AgentExecutionServiceTest {
         AgentToolDefinition ragSearch = registry.get("rag-search");
 
         assertThat(ragSearch).isNotNull();
-        AgentToolParameterDefinition strategy = ragSearch.getParameterSchema().get("strategy");
+        assertThat(ragSearch.getParameterSchema()).containsKey("rerankStrategy");
+        assertThat(ragSearch.getParameterSchema()).doesNotContainKey("strategy");
+        AgentToolParameterDefinition strategy = ragSearch.getParameterSchema().get("rerankStrategy");
+        assertThat(strategy.getDescription()).contains("重排序");
         assertThat(strategy.getAllowedValues()).contains("HYBRID", "VECTOR", "BM25");
         AgentToolParameterDefinition topK = ragSearch.getParameterSchema().get("topK");
         assertThat(topK.getMinValue().intValue()).isEqualTo(1);
         assertThat(topK.getMaxValue().intValue()).isEqualTo(50);
+    }
+
+    @Test
+    void plannerPromptsDocumentStructuredFieldsAndPlaceholderContract() {
+        AgentExecutionService service = new AgentExecutionService();
+        ReflectionTestUtils.setField(service, "toolRegistry", new AgentToolRegistry());
+
+        AgentExecutionRequest request = new AgentExecutionRequest();
+        request.setTask("先检索再总结");
+
+        String initialPrompt = ReflectionTestUtils.invokeMethod(
+                service, "buildPlannerPrompt", request, Map.of("documentId", "doc-1"));
+        String followUpPrompt = ReflectionTestUtils.invokeMethod(
+                service, "buildFollowUpPlannerPrompt", request, Map.of(), List.of(), List.of(), 2);
+
+        assertThat(initialPrompt).contains("dependsOn", "successCriteria", "retryPolicy", "maxRetries");
+        assertThat(initialPrompt).contains("${steps.<id>.data.<key>}", "${steps.<id>.observation}");
+        assertThat(initialPrompt).contains("rerankStrategy", "不要把它当成业务检索策略");
+        assertThat(followUpPrompt).contains("dependsOn", "successCriteria", "${steps.<id>.data.<key>}");
     }
 
     @SuppressWarnings("unchecked")
